@@ -154,9 +154,9 @@ def _require_dashboard_auth(request: Request) -> None:
 async def dashboard_login_page(request: Request, error: str = "") -> HTMLResponse:
     """Render the dashboard login page."""
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "view": "login",
             "error": error,
         },
@@ -201,9 +201,9 @@ async def dashboard_home(request: Request) -> Response:
     audit = await get_audit_log(limit=50)
 
     return templates.TemplateResponse(
+        request,
         "dashboard.html",
         {
-            "request": request,
             "view": "dashboard",
             "vault_path": vault_path,
             "tokens": tokens,
