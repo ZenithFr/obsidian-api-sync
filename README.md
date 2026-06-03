@@ -55,7 +55,7 @@ obsidian-hermes-api/
 
 ## Quick Start
 
-### 1. Server
+### 1. Server (Local/Windows)
 
 ```bash
 cd server
@@ -75,6 +75,54 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Open `http://localhost:8000/dashboard` → log in → generate a token → copy the **Connect** config.
+
+### 1b. Server (Linux VM Deployment)
+
+If deploying to a Linux VM (e.g. Ubuntu on Azure/AWS/DigitalOcean):
+
+```bash
+# 1. Clone and install dependencies
+git clone https://github.com/YourUsername/obsidian-hermes-api.git
+cd obsidian-hermes-api/server
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+uv venv .venv --python 3.12
+uv pip install -r requirements.txt
+
+# 2. Configure environment
+cp .env.example .env
+nano .env # Set SECRET_KEY, ADMIN_PASSWORD, and absolute DEFAULT_VAULT_PATH
+
+# 3. Create a systemd service
+sudo nano /etc/systemd/system/ob-api.service
+```
+
+Paste this into the service file (adjust paths for your username):
+```ini
+[Unit]
+Description=Hermes Vault Sync API
+After=network.target
+
+[Service]
+User=yourusername
+WorkingDirectory=/home/yourusername/obsidian-hermes-api/server
+ExecStart=/home/yourusername/obsidian-hermes-api/server/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/yourusername/obsidian-hermes-api/server/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ob-api
+sudo systemctl start ob-api
+```
+Your dashboard will be available at `http://<your-vm-ip>:8000/dashboard`.
+
 
 ### 2. Obsidian Plugin
 
