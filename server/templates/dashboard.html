@@ -43,8 +43,15 @@
 
   <style type="text/tailwindcss">
     @layer base {
+      html { transition: filter 0.3s ease, background-color 0.3s ease; }
       body {
         @apply bg-white text-black font-mono antialiased;
+      }
+    }
+    @layer utilities {
+      .theme-inverted {
+        filter: invert(1) hue-rotate(180deg);
+        background-color: black;
       }
     }
     @layer components {
@@ -91,7 +98,12 @@
     }
   </style>
 </head>
-<body class="min-h-screen relative overflow-x-hidden">
+<body class="min-h-screen relative overflow-x-hidden transition-colors">
+
+<!-- ── Theme Toggle Button ────────────────────────────────────── -->
+<button onclick="toggleTheme()" class="fixed top-6 right-6 z-[100] bg-white text-black border-4 border-black font-black uppercase px-4 py-2 shadow-brutal hover:bg-black hover:text-white hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1 transition-all">
+  <span id="theme-icon">☾</span> INVERT
+</button>
 
 <!-- ═══════════════════════════════════════════════════════════════
      BACKGROUND COLLAGE (ALWAYS PRESENT)
@@ -441,6 +453,22 @@
      JAVASCRIPT (Preserved Logic, Updated UI renders)
      ═══════════════════════════════════════════════════════════════ -->
 <script>
+// ── Theme Management ─────────────────────────────────────────────
+function toggleTheme() {
+  const root = document.documentElement;
+  root.classList.toggle('theme-inverted');
+  const isDark = root.classList.contains('theme-inverted');
+  localStorage.setItem('hermes-theme', isDark ? 'dark' : 'light');
+  document.getElementById('theme-icon').textContent = isDark ? '☼' : '☾';
+}
+
+if (localStorage.getItem('hermes-theme') === 'dark') {
+  document.documentElement.classList.add('theme-inverted');
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('theme-icon').textContent = '☼';
+  });
+}
+
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
