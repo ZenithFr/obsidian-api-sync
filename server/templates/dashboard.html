@@ -1,42 +1,41 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hermes Vault Sync{% if view == 'dashboard' %} — Dashboard{% else %} — Login{% endif %}</title>
 
-  <!-- Google Fonts: Inter -->
+  <!-- Google Fonts: Space Mono for pure Brutalist aesthetics -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
 
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      darkMode: 'class',
       theme: {
         extend: {
-          fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+          fontFamily: { sans: ['"Space Mono"', 'monospace'], mono: ['"Space Mono"', 'monospace'] },
           colors: {
-            slate: {
-              850: '#172033',
-              950: '#0a0f1e',
-            },
+            black: '#000000',
+            white: '#FFFFFF',
           },
-          backgroundImage: {
-            'glass': 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+          boxShadow: {
+            'brutal': '8px 8px 0px 0px rgba(0,0,0,1)',
+            'brutal-sm': '4px 4px 0px 0px rgba(0,0,0,1)',
+            'brutal-hover': '0px 0px 0px 0px rgba(0,0,0,1)',
           },
           animation: {
-            'fade-in': 'fadeIn 0.3s ease-out',
-            'slide-up': 'slideUp 0.3s ease-out',
-            'pulse-dot': 'pulseDot 2s ease-in-out infinite',
+            'glitch': 'glitch 1s linear infinite',
           },
           keyframes: {
-            fadeIn: { '0%': { opacity: 0 }, '100%': { opacity: 1 } },
-            slideUp: { '0%': { opacity: 0, transform: 'translateY(16px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
-            pulseDot: { '0%, 100%': { opacity: 1 }, '50%': { opacity: 0.4 } },
-          },
+            glitch: {
+              '2%, 64%': { transform: 'translate(2px, 0) skew(0deg)' },
+              '4%, 60%': { transform: 'translate(-2px, 0) skew(0deg)' },
+              '62%': { transform: 'translate(0, 0) skew(5deg)' },
+            }
+          }
         },
       },
     };
@@ -45,121 +44,132 @@
   <style type="text/tailwindcss">
     @layer base {
       body {
-        @apply bg-slate-950 text-slate-200 font-sans antialiased;
-        background-image:
-          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99,102,241,0.15), transparent),
-          radial-gradient(ellipse 60% 40% at 80% 80%, rgba(168,85,247,0.08), transparent);
+        @apply bg-white text-black font-mono antialiased;
       }
     }
     @layer components {
-      .glass-card {
-        @apply bg-slate-900/60 backdrop-blur-xl border border-slate-700/50 rounded-2xl;
-        background-image: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+      .brutal-card {
+        @apply bg-white border-4 border-black p-6 shadow-brutal transition-all;
       }
-      .glass-input {
-        @apply bg-slate-800/60 border border-slate-600/50 rounded-xl px-4 py-2.5
-               text-slate-200 placeholder-slate-500 focus:outline-none
-               focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/70
-               transition-all duration-200;
+      .brutal-input {
+        @apply bg-white border-4 border-black text-black px-4 py-3 
+               placeholder-gray-400 focus:outline-none focus:bg-gray-100
+               transition-colors;
       }
       .btn-primary {
-        @apply bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700
-               text-white font-semibold px-5 py-2.5 rounded-xl
-               transition-all duration-200 shadow-lg shadow-indigo-900/40
-               focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 focus:ring-offset-slate-900;
+        @apply bg-black text-white font-bold px-6 py-3 border-4 border-black
+               shadow-brutal-sm uppercase tracking-widest
+               hover:bg-white hover:text-black hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1
+               active:bg-gray-200
+               transition-all focus:outline-none;
       }
       .btn-secondary {
-        @apply bg-slate-700/70 hover:bg-slate-600/70 active:bg-slate-700
-               text-slate-200 font-medium px-4 py-2 rounded-xl
-               transition-all duration-200 border border-slate-600/40
-               focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 focus:ring-offset-slate-900;
+        @apply bg-white text-black font-bold px-4 py-2 border-4 border-black
+               shadow-brutal-sm uppercase text-sm
+               hover:bg-black hover:text-white hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1
+               transition-all focus:outline-none;
       }
       .btn-danger {
-        @apply bg-red-900/40 hover:bg-red-800/60 active:bg-red-900/60
-               text-red-300 hover:text-red-200 font-medium px-3 py-1.5 rounded-lg text-sm
-               transition-all duration-200 border border-red-800/40
-               focus:outline-none focus:ring-2 focus:ring-red-500;
+        @apply bg-black text-white hover:bg-white hover:text-black font-bold px-4 py-2 border-4 border-black text-sm uppercase
+               transition-all shadow-brutal-sm hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1 focus:outline-none;
       }
       .tab-btn {
-        @apply px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200
-               text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 focus:outline-none;
+        @apply px-6 py-3 border-4 border-black bg-white text-black font-bold uppercase transition-all shadow-brutal-sm
+               hover:bg-black hover:text-white hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1;
       }
       .tab-btn.active {
-        @apply bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-lg shadow-indigo-900/20;
+        @apply bg-black text-white shadow-brutal-hover translate-x-1 translate-y-1;
       }
       .data-table th {
-        @apply text-left text-xs font-semibold text-slate-400 uppercase tracking-wider py-3 px-4 border-b border-slate-700/50;
+        @apply text-left font-bold text-black uppercase tracking-wider py-4 px-4 border-b-4 border-black;
       }
       .data-table td {
-        @apply py-3 px-4 text-sm border-b border-slate-800/60;
+        @apply py-4 px-4 font-medium border-b-4 border-black;
       }
-      .data-table tr:last-child td { @apply border-b-0; }
-      .data-table tbody tr { @apply hover:bg-slate-800/30 transition-colors duration-100; }
-      .mono { @apply font-mono text-sm; }
+      .data-table tbody tr { @apply hover:bg-gray-100 transition-colors; }
+      .mono { @apply font-mono; }
     }
   </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen relative overflow-x-hidden">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     BACKGROUND COLLAGE (ALWAYS PRESENT)
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="fixed inset-0 z-[-1] overflow-hidden bg-white pointer-events-none">
+  <!-- Glitch background -->
+  <img src="/static/assets/glitch.png" class="absolute inset-0 w-full h-full object-cover mix-blend-multiply opacity-30" alt="" />
+  
+  <!-- Geometric Star -->
+  <img src="/static/assets/star.png" class="absolute bottom-20 left-10 w-96 mix-blend-multiply opacity-50 animate-[spin_40s_linear_infinite]" alt="" />
+  
+  <!-- Dove -->
+  <img src="/static/assets/dove.png" class="absolute top-10 left-10 w-64 mix-blend-multiply opacity-80" alt="" />
+  
+  <!-- Viscous Hand -->
+  <img src="/static/assets/hand.png" class="absolute -bottom-10 -right-10 w-1/3 min-w-[300px] max-w-[500px] mix-blend-multiply opacity-100" style="transform: rotate(-10deg)" alt="" />
+  
+  <!-- Text Snippets (Distressed/Integrated) -->
+  <div class="absolute top-1/4 right-8 w-64 text-sm font-mono font-bold uppercase leading-none transform rotate-90 origin-bottom-right mix-blend-difference text-white opacity-90">
+    All is well and the end is still well, though prayer you're still alive...
+  </div>
+  
+  <div class="absolute bottom-32 right-1/4 w-80 text-xl font-black uppercase text-black bg-white border-8 border-black p-4 transform -rotate-6 shadow-brutal">
+    No matter what you do, I will eventually become myself. I will endure it. I will have money, I will be free.
+  </div>
+</div>
+
+<!-- Marquee -->
+<div class="fixed bottom-0 left-0 w-full bg-black text-white py-2 z-50 overflow-hidden whitespace-nowrap border-t-8 border-white">
+  <marquee class="font-mono text-sm uppercase font-bold tracking-widest">
+    You finally have no reason to be valuable congratulations &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    You finally have no reason to be valuable congratulations &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    You finally have no reason to be valuable congratulations &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    You finally have no reason to be valuable congratulations
+  </marquee>
+</div>
 
 {% if view == 'login' %}
 <!-- ═══════════════════════════════════════════════════════════════
      LOGIN SCREEN
      ═══════════════════════════════════════════════════════════════ -->
-<div class="min-h-screen flex items-center justify-center px-4 py-16">
-  <div class="w-full max-w-md animate-slide-up">
+<div class="min-h-screen flex items-center justify-center px-4 py-16 relative z-10 pb-16">
+  <div class="w-full max-w-md">
 
-    <!-- Logo + Title -->
-    <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl mb-6
-                  bg-gradient-to-br from-indigo-600 to-purple-700 shadow-2xl shadow-indigo-900/50">
-        <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M22 4L8 22h12l-2 14 14-18H20l2-14z" fill="white" stroke="white" stroke-width="1.5"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </div>
-      <h1 class="text-3xl font-bold text-white tracking-tight">Hermes Vault Sync</h1>
-      <p class="text-slate-400 mt-2 text-sm font-medium">Remote Vault Control Panel</p>
+    <!-- Title -->
+    <div class="text-center mb-8 bg-white border-4 border-black py-4 shadow-brutal transform -rotate-2 hover:rotate-0 transition-transform">
+      <h1 class="text-4xl font-black text-black tracking-tighter uppercase">Hermes</h1>
+      <h2 class="text-xl font-bold text-black uppercase tracking-widest bg-black text-white inline-block px-2 mt-1">Vault Sync</h2>
     </div>
 
     <!-- Login Card -->
-    <div class="glass-card p-8 shadow-2xl shadow-black/40">
-      <form method="POST" action="/dashboard/login" class="space-y-5">
+    <div class="brutal-card bg-white">
+      <form method="POST" action="/dashboard/login" class="space-y-6">
 
         {% if error %}
-        <div class="bg-red-900/30 border border-red-700/50 rounded-xl px-4 py-3 flex items-center gap-3 animate-fade-in">
-          <svg class="w-5 h-5 text-red-400 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-          </svg>
-          <p class="text-red-300 text-sm font-medium">{{ error }}</p>
+        <div class="bg-black text-white border-4 border-black p-4 font-bold uppercase text-sm animate-glitch">
+          !! ERROR: {{ error }} !!
         </div>
         {% endif %}
 
         <div class="space-y-2">
-          <label class="block text-sm font-medium text-slate-300">Admin Password</label>
+          <label class="block text-sm font-bold text-black uppercase tracking-wider">Admin Password</label>
           <input
             type="password"
             name="password"
             autofocus
             autocomplete="current-password"
-            placeholder="Enter your admin password"
-            class="glass-input w-full text-base"
+            placeholder="[ ENTER PASSWORD ]"
+            class="brutal-input w-full text-lg font-bold"
           />
         </div>
 
-        <button type="submit" class="btn-primary w-full text-base py-3 mt-2">
-          <span class="flex items-center justify-center gap-2">
-            <svg class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
-            </svg>
-            Unlock Dashboard
-          </span>
+        <button type="submit" class="btn-primary w-full text-lg py-4">
+          UNLOCK
         </button>
       </form>
     </div>
 
-    <p class="text-center text-slate-600 text-xs mt-6">
-      Hermes Vault Sync API v1.0.0
-    </p>
   </div>
 </div>
 
@@ -169,38 +179,29 @@
      ═══════════════════════════════════════════════════════════════ -->
 
 <!-- ── Top Navbar ─────────────────────────────────────────────── -->
-<nav class="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-xl">
-  <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+<nav class="sticky top-0 z-40 border-b-8 border-black bg-white">
+  <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
 
     <!-- Logo -->
-    <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-700
-                  flex items-center justify-center shadow-lg shadow-indigo-900/40 flex-shrink-0">
-        <svg width="18" height="18" viewBox="0 0 40 40" fill="none">
-          <path d="M22 4L8 22h12l-2 14 14-18H20l2-14z" fill="white" stroke="white" stroke-width="1.5"
-                stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+    <div class="flex items-center gap-4">
+      <div class="w-12 h-12 bg-black text-white flex items-center justify-center font-black text-2xl border-4 border-black">
+        H
       </div>
       <div>
-        <span class="font-bold text-white text-lg leading-none block">Hermes</span>
-        <span class="text-slate-500 text-xs leading-none">Vault Sync</span>
+        <span class="font-black text-black text-xl leading-none block uppercase tracking-tighter">Hermes</span>
+        <span class="font-bold bg-black text-white text-xs px-1 uppercase tracking-widest mt-1 inline-block">Vault Sync</span>
       </div>
     </div>
 
     <!-- Status + Logout -->
-    <div class="flex items-center gap-4">
-      <div class="flex items-center gap-2 bg-emerald-900/20 border border-emerald-700/30 rounded-full px-3 py-1.5">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse-dot"></span>
-        <span class="text-emerald-400 text-xs font-semibold">Server Online</span>
+    <div class="flex items-center gap-6">
+      <div class="flex items-center gap-2 border-4 border-black px-3 py-1 font-bold text-sm bg-white uppercase shadow-brutal-sm">
+        <span class="w-3 h-3 bg-black animate-pulse"></span>
+        <span>Online</span>
       </div>
       <form method="POST" action="/dashboard/logout">
-        <button type="submit" class="btn-secondary text-sm py-1.5 px-4">
-          <span class="flex items-center gap-1.5">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h6a1 1 0 110 2H3a3 3 0 01-3-3V4a3 3 0 013-3h6a1 1 0 010 2H3zm10.293 4.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L14.586 11H7a1 1 0 110-2h7.586l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd" />
-            </svg>
-            Logout
-          </span>
+        <button type="submit" class="btn-secondary">
+          LOGOUT
         </button>
       </form>
     </div>
@@ -208,213 +209,137 @@
 </nav>
 
 <!-- ── Tab Bar ────────────────────────────────────────────────── -->
-<div class="max-w-7xl mx-auto px-6 pt-6">
-  <div class="flex items-center gap-1 p-1 bg-slate-900/60 border border-slate-700/40 rounded-2xl w-fit">
-    <button onclick="switchTab('vault')"   id="tab-vault"   class="tab-btn active">
-      <span class="flex items-center gap-2">
-        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/>
-        </svg>
-        Vault
-      </span>
-    </button>
-    <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">
-      <span class="flex items-center gap-2">
-        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clip-rule="evenodd"/>
-        </svg>
-        Tokens
-      </span>
-    </button>
-    <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">
-      <span class="flex items-center gap-2">
-        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M12.586 4.586a2 2 0 112.828 2.828l-3 3a2 2 0 01-2.828 0 1 1 0 00-1.414 1.414 4 4 0 005.656 0l3-3a4 4 0 00-5.656-5.656l-1.5 1.5a1 1 0 101.414 1.414l1.5-1.5zm-5 5a2 2 0 012.828 0 1 1 0 101.414-1.414 4 4 0 00-5.656 0l-3 3a4 4 0 105.656 5.656l1.5-1.5a1 1 0 10-1.414-1.414l-1.5 1.5a2 2 0 11-2.828-2.828l3-3z" clip-rule="evenodd"/>
-        </svg>
-        Connect
-      </span>
-    </button>
-    <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">
-      <span class="flex items-center gap-2">
-        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
-        </svg>
-        Audit Log
-      </span>
-    </button>
+<div class="max-w-7xl mx-auto px-6 pt-10 relative z-10">
+  <div class="flex flex-wrap gap-4">
+    <button onclick="switchTab('vault')"   id="tab-vault"   class="tab-btn active">VAULT</button>
+    <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">TOKENS</button>
+    <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">CONNECT</button>
+    <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">AUDIT LOG</button>
   </div>
 </div>
 
 <!-- ── Tab Panels ─────────────────────────────────────────────── -->
-<main class="max-w-7xl mx-auto px-6 py-8 space-y-8">
+<main class="max-w-7xl mx-auto px-6 py-10 space-y-10 relative z-10 pb-24">
 
   <!-- ════════════════ TAB: VAULT ════════════════ -->
-  <div id="panel-vault" class="tab-panel space-y-6 animate-fade-in">
+  <div id="panel-vault" class="tab-panel space-y-8">
 
-    <!-- Current Vault Path -->
-    <div class="glass-card p-6 shadow-xl shadow-black/20">
-      <div class="flex items-start justify-between gap-4 mb-4">
+    <div class="brutal-card">
+      <div class="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h2 class="text-lg font-semibold text-white">Vault Directory</h2>
-          <p class="text-slate-400 text-sm mt-0.5">The root folder where all markdown notes are stored.</p>
+          <h2 class="text-2xl font-black uppercase text-black bg-white inline-block">Vault Directory</h2>
+          <p class="font-bold text-sm uppercase mt-2">The root folder for markdown notes.</p>
         </div>
-        <div id="file-count-badge"
-             class="flex-shrink-0 bg-indigo-900/30 border border-indigo-700/40 rounded-xl px-4 py-2 text-center hidden">
-          <div class="text-2xl font-bold text-indigo-300" id="file-count-num">—</div>
-          <div class="text-xs text-indigo-400 font-medium">notes</div>
+        <div id="file-count-badge" class="bg-black text-white border-4 border-black px-6 py-4 text-center hidden transform rotate-3">
+          <div class="text-4xl font-black" id="file-count-num">—</div>
+          <div class="text-xs font-bold uppercase tracking-widest mt-1">Files</div>
         </div>
       </div>
 
       <!-- Current path display -->
-      <div class="bg-slate-950/60 border border-slate-700/40 rounded-xl px-4 py-3 mb-5">
-        <div class="text-xs text-slate-500 font-medium mb-1">CURRENT PATH</div>
-        <div class="mono text-indigo-300 text-sm break-all" id="current-vault-path">{{ vault_path }}</div>
+      <div class="border-4 border-black bg-gray-100 p-4 mb-6 relative">
+        <div class="absolute -top-3 left-4 bg-white px-2 font-bold text-xs uppercase border-x-4 border-black">Current Path</div>
+        <div class="text-lg font-bold break-all mt-2" id="current-vault-path">{{ vault_path }}</div>
       </div>
 
       <!-- Update path form -->
-      <div class="flex gap-3">
+      <div class="flex flex-col sm:flex-row gap-4">
         <input
           id="vault-path-input"
           type="text"
-          placeholder="Enter new vault path…"
-          class="glass-input flex-1 mono text-sm"
+          placeholder="/ABS/PATH/TO/VAULT"
+          class="brutal-input flex-1"
         />
-        <button onclick="updateVaultPath()" class="btn-primary flex-shrink-0">
-          <span class="flex items-center gap-2">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-            </svg>
-            Update Path
-          </span>
+        <button onclick="updateVaultPath()" class="btn-primary sm:w-auto w-full">
+          UPDATE PATH
         </button>
       </div>
     </div>
 
     <!-- Vault Stats -->
-    <div class="glass-card p-6 shadow-xl shadow-black/20">
-      <div class="flex items-center justify-between mb-4">
-        <h2 class="text-lg font-semibold text-white">Vault Stats</h2>
-        <button onclick="loadVaultStats()" class="btn-secondary text-xs py-1.5 px-3">
-          <span class="flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
-            </svg>
-            Refresh
-          </span>
+    <div class="brutal-card">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-black uppercase bg-black text-white px-2">Vault Stats</h2>
+        <button onclick="loadVaultStats()" class="btn-secondary">
+          REFRESH
         </button>
       </div>
-      <div id="vault-stats-content" class="text-slate-400 text-sm">
-        <p>Click Refresh to load vault file statistics. You need a valid token (generate one in the Tokens tab) to fetch file counts.</p>
+      <div id="vault-stats-content" class="font-bold text-sm uppercase">
+        <p>Click Refresh to load. Requires an active token.</p>
       </div>
     </div>
   </div>
 
   <!-- ════════════════ TAB: TOKENS ════════════════ -->
-  <div id="panel-tokens" class="tab-panel space-y-6 animate-fade-in hidden">
+  <div id="panel-tokens" class="tab-panel space-y-8 hidden">
 
     <!-- Generate Token -->
-    <div class="glass-card p-6 shadow-xl shadow-black/20">
-      <h2 class="text-lg font-semibold text-white mb-1">Generate New Token</h2>
-      <p class="text-slate-400 text-sm mb-5">Tokens are used to authenticate API requests and WebSocket connections.</p>
+    <div class="brutal-card">
+      <h2 class="text-2xl font-black uppercase mb-2">Generate Token</h2>
+      <p class="font-bold text-sm uppercase mb-6 bg-black text-white inline-block px-2">Authentication Key Creation</p>
 
-      <div class="flex gap-3 mb-5">
+      <div class="flex flex-col sm:flex-row gap-4 mb-6">
         <input
           id="token-label-input"
           type="text"
-          placeholder="Label (e.g. obsidian-plugin, hermes-agent)…"
-          class="glass-input flex-1"
+          placeholder="LABEL (E.G. DEVICE-NAME)"
+          class="brutal-input flex-1"
         />
-        <button onclick="generateToken()" class="btn-primary flex-shrink-0">
-          <span class="flex items-center gap-2">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/>
-            </svg>
-            Generate Token
-          </span>
+        <button onclick="generateToken()" class="btn-primary">
+          GENERATE
         </button>
       </div>
 
-      <!-- New token reveal box (hidden by default) -->
-      <div id="new-token-box" class="hidden animate-slide-up">
-        <div class="bg-emerald-950/40 border border-emerald-700/50 rounded-xl p-4">
-          <div class="flex items-center gap-2 mb-2">
-            <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
-            </svg>
-            <span class="text-emerald-400 font-semibold text-sm">Token Generated Successfully</span>
-          </div>
-          <div class="flex items-center gap-3 mb-3">
+      <!-- New token reveal box -->
+      <div id="new-token-box" class="hidden">
+        <div class="border-4 border-black bg-black text-white p-6 transform -rotate-1">
+          <div class="font-black uppercase mb-4 text-xl tracking-wider animate-glitch">!! TOKEN GENERATED !!</div>
+          <div class="flex flex-col sm:flex-row items-center gap-4 mb-4">
             <div id="new-token-value"
-                 class="mono text-emerald-300 text-sm bg-slate-950/60 rounded-lg px-3 py-2 flex-1 break-all border border-emerald-800/40">
+                 class="bg-white text-black font-bold p-4 w-full break-all border-4 border-white text-lg">
             </div>
-            <button onclick="copyNewToken()" id="copy-token-btn" class="btn-secondary flex-shrink-0 text-sm">
-              <span class="flex items-center gap-1.5">
-                <svg id="copy-icon" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z"/>
-                  <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/>
-                </svg>
-                Copy
-              </span>
+            <button onclick="copyNewToken()" id="copy-token-btn" class="bg-white text-black border-4 border-black font-black uppercase px-6 py-4 hover:bg-gray-300 w-full sm:w-auto flex-shrink-0">
+              COPY
             </button>
           </div>
-          <div class="flex items-center gap-1.5 text-amber-400 text-xs font-medium">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
-            </svg>
-            Save this token now — it will NOT be shown again.
+          <div class="font-bold uppercase text-sm bg-white text-black inline-block px-2">
+            SAVE THIS NOW. IT WILL NOT BE SHOWN AGAIN.
           </div>
         </div>
       </div>
     </div>
 
     <!-- Token List -->
-    <div class="glass-card shadow-xl shadow-black/20 overflow-hidden">
-      <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between">
-        <h2 class="text-lg font-semibold text-white">Active Tokens</h2>
-        <button onclick="loadTokens()" class="btn-secondary text-xs py-1.5 px-3">
-          <span class="flex items-center gap-1.5">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
-            </svg>
-            Refresh
-          </span>
-        </button>
+    <div class="brutal-card p-0 overflow-hidden">
+      <div class="p-6 border-b-4 border-black flex items-center justify-between bg-white">
+        <h2 class="text-2xl font-black uppercase">Active Tokens</h2>
+        <button onclick="loadTokens()" class="btn-secondary">REFRESH</button>
       </div>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto bg-white">
         <table class="w-full data-table">
           <thead>
-            <tr class="bg-slate-900/40">
+            <tr class="bg-gray-100">
               <th>ID</th>
               <th>Label</th>
-              <th>Token (truncated)</th>
+              <th>Token</th>
               <th>Created</th>
-              <th>Last Used</th>
+              <th>Used</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="tokens-tbody">
             {% for tok in tokens %}
             <tr data-token-id="{{ tok.id }}" data-token-full="{{ tok.token }}">
-              <td class="text-slate-400 font-mono text-xs">#{{ tok.id }}</td>
-              <td>
-                <span class="bg-indigo-900/30 text-indigo-300 border border-indigo-700/30 rounded-lg px-2.5 py-0.5 text-xs font-medium">
-                  {{ tok.label }}
-                </span>
-              </td>
-              <td class="mono text-slate-300 text-xs">{{ tok.token[:16] }}…</td>
-              <td class="text-slate-400 text-xs">{{ tok.created }}</td>
-              <td class="text-slate-400 text-xs">{{ tok.last_used or '—' }}</td>
-              <td>
-                <button
-                  onclick="revokeToken({{ tok.id }}, this)"
-                  class="btn-danger">
-                  Revoke
-                </button>
-              </td>
+              <td class="font-black">#{{ tok.id }}</td>
+              <td><span class="bg-black text-white px-2 py-1 font-bold uppercase text-xs">{{ tok.label }}</span></td>
+              <td class="font-bold">{{ tok.token[:16] }}...</td>
+              <td class="text-sm font-bold">{{ tok.created }}</td>
+              <td class="text-sm font-bold">{{ tok.last_used or 'NEVER' }}</td>
+              <td><button onclick="revokeToken({{ tok.id }}, this)" class="btn-danger">REVOKE</button></td>
             </tr>
             {% else %}
             <tr id="empty-tokens-row">
-              <td colspan="6" class="text-center text-slate-500 py-8">No tokens yet. Generate one above.</td>
+              <td colspan="6" class="text-center font-bold uppercase py-8">NO TOKENS FOUND.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -424,123 +349,81 @@
   </div>
 
   <!-- ════════════════ TAB: CONNECT ════════════════ -->
-  <div id="panel-connect" class="tab-panel space-y-6 animate-fade-in hidden">
+  <div id="panel-connect" class="tab-panel space-y-8 hidden">
 
-    <div class="glass-card p-6 shadow-xl shadow-black/20">
-      <h2 class="text-lg font-semibold text-white mb-1">Client Config Export</h2>
-      <p class="text-slate-400 text-sm mb-6">
-        Generate a Base64-encoded connection config to paste directly into the
-        Obsidian Hermes Sync plugin Quick Import screen.
-      </p>
+    <div class="brutal-card">
+      <h2 class="text-2xl font-black uppercase mb-2">Client Config Export</h2>
+      <p class="font-bold text-sm uppercase mb-8">Generate Base64 for Quick Import in Obsidian.</p>
 
-      <!-- Token selector -->
-      <div class="mb-5">
-        <label class="block text-sm font-medium text-slate-300 mb-2">Select Token</label>
-        <select id="connect-token-select" onchange="updateConnectConfig()"
-                class="glass-input w-full">
-          <option value="">— paste your token below —</option>
+      <div class="mb-6">
+        <label class="block font-black uppercase mb-2">Select Token</label>
+        <select id="connect-token-select" onchange="updateConnectConfig()" class="brutal-input w-full bg-white cursor-pointer font-bold">
+          <option value="">[ SELECT TOKEN ]</option>
           {% for tok in tokens %}
-          <option value="{{ tok.token }}" data-label="{{ tok.label }}">#{{ tok.id }} — {{ tok.label }} ({{ tok.token[:12] }}…)</option>
+          <option value="{{ tok.token }}" data-label="{{ tok.label }}">#{{ tok.id }} - {{ tok.label }}</option>
           {% endfor %}
         </select>
       </div>
 
-      <!-- Manual token override -->
-      <div class="mb-5">
-        <label class="block text-sm font-medium text-slate-300 mb-2">Or paste token manually</label>
-        <input id="connect-token-manual" type="text" placeholder="Paste full token here…"
-               oninput="updateConnectConfig()"
-               class="glass-input w-full mono text-sm" />
+      <div class="mb-6">
+        <label class="block font-black uppercase mb-2">Or Paste Token</label>
+        <input id="connect-token-manual" type="text" placeholder="PASTE FULL TOKEN..." oninput="updateConnectConfig()" class="brutal-input w-full" />
       </div>
 
-      <!-- Config output -->
-      <div class="mb-4">
-        <label class="block text-sm font-medium text-slate-300 mb-2">Base64 Config Blob</label>
-        <div class="relative">
-          <textarea id="connect-config-output" readonly rows="4"
-                    class="glass-input w-full mono text-xs resize-none"
-                    placeholder="Config will appear here once you select or paste a token…"></textarea>
-        </div>
+      <div class="mb-6">
+        <label class="block font-black uppercase mb-2">Config Blob</label>
+        <textarea id="connect-config-output" readonly rows="4" class="brutal-input w-full resize-none bg-gray-100 font-bold" placeholder="BLOB WILL APPEAR HERE"></textarea>
       </div>
 
-      <div class="flex items-center gap-3">
-        <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary">
-          <span class="flex items-center gap-2" id="copy-config-label">
-            <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z"/>
-              <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/>
-            </svg>
-            Copy to Clipboard
-          </span>
-        </button>
-      </div>
+      <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary">
+        <span id="copy-config-label">COPY BLOB</span>
+      </button>
 
-      <!-- Instructions -->
-      <div class="mt-6 bg-slate-800/40 border border-slate-700/40 rounded-xl p-4 space-y-2">
-        <div class="text-sm font-semibold text-slate-300 flex items-center gap-2">
-          <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
-          </svg>
-          How to import into Obsidian
-        </div>
-        <ol class="text-slate-400 text-sm space-y-1 list-decimal list-inside">
-          <li>Open Obsidian → Settings → Community Plugins → Hermes Sync</li>
-          <li>Click <strong class="text-slate-200">Quick Import</strong></li>
-          <li>Paste the Base64 blob from above and click <strong class="text-slate-200">Import</strong></li>
-          <li>The plugin will auto-configure the server URL and token</li>
+      <div class="mt-8 border-4 border-black p-6 bg-black text-white">
+        <div class="font-black uppercase text-xl mb-4 bg-white text-black inline-block px-2">IMPORT INSTRUCTIONS</div>
+        <ol class="font-bold uppercase text-sm space-y-2 list-decimal list-inside">
+          <li>Open Obsidian settings > Hermes Sync</li>
+          <li>Click <span class="bg-white text-black px-1">QUICK IMPORT</span></li>
+          <li>Paste the BLOB and click IMPORT</li>
         </ol>
       </div>
     </div>
 
-    <!-- Raw JSON preview -->
-    <div class="glass-card p-6 shadow-xl shadow-black/20">
-      <h2 class="text-lg font-semibold text-white mb-3">Raw Config JSON</h2>
-      <pre id="connect-json-preview"
-           class="bg-slate-950/60 border border-slate-700/40 rounded-xl p-4 text-sm mono text-slate-300 overflow-x-auto whitespace-pre-wrap text-xs">
-Select a token above to preview the config…</pre>
+    <div class="brutal-card">
+      <h2 class="text-xl font-black uppercase mb-4">Raw JSON Preview</h2>
+      <pre id="connect-json-preview" class="bg-gray-100 border-4 border-black p-4 font-bold text-sm overflow-x-auto whitespace-pre-wrap">SELECT TOKEN TO PREVIEW</pre>
     </div>
   </div>
 
   <!-- ════════════════ TAB: AUDIT LOG ════════════════ -->
-  <div id="panel-audit" class="tab-panel space-y-6 animate-fade-in hidden">
-
-    <div class="glass-card shadow-xl shadow-black/20 overflow-hidden">
-      <div class="px-6 py-4 border-b border-slate-700/50 flex items-center justify-between flex-wrap gap-3">
+  <div id="panel-audit" class="tab-panel space-y-8 hidden">
+    <div class="brutal-card p-0 overflow-hidden">
+      <div class="px-6 py-4 border-b-4 border-black flex items-center justify-between flex-wrap gap-4 bg-white">
         <div>
-          <h2 class="text-lg font-semibold text-white">Audit Log</h2>
-          <p class="text-slate-400 text-xs mt-0.5">Auto-refreshes every 10 seconds.</p>
+          <h2 class="text-2xl font-black uppercase">Audit Log</h2>
+          <p class="font-bold text-sm uppercase">10S Auto-refresh</p>
         </div>
-        <div class="flex items-center gap-2">
-          <span id="audit-last-refresh" class="text-slate-500 text-xs"></span>
-          <button onclick="clearAuditView()" class="btn-secondary text-xs py-1.5 px-3">
-            Clear View
-          </button>
-          <button onclick="toggleAuditRefresh()" id="audit-pause-btn"
-                  class="btn-secondary text-xs py-1.5 px-3">
-            <span class="flex items-center gap-1.5">
-              <svg id="audit-pause-icon" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
-              </svg>
-              Pause
-            </span>
+        <div class="flex items-center gap-4">
+          <span id="audit-last-refresh" class="font-bold text-xs uppercase bg-black text-white px-2 py-1"></span>
+          <button onclick="clearAuditView()" class="btn-secondary">CLEAR</button>
+          <button onclick="toggleAuditRefresh()" id="audit-pause-btn" class="btn-secondary">
+            <span id="audit-pause-label">PAUSE</span>
           </button>
         </div>
       </div>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto bg-white">
         <table class="w-full data-table">
           <thead>
-            <tr class="bg-slate-900/40">
+            <tr class="bg-gray-100">
               <th>Timestamp</th>
               <th>Method</th>
               <th>Path</th>
-              <th>Token ID</th>
+              <th>Token</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="audit-tbody">
-            <tr>
-              <td colspan="5" class="text-center text-slate-500 py-8">Loading audit log…</td>
-            </tr>
+            <tr><td colspan="5" class="text-center font-bold uppercase py-8">LOADING LOGS...</td></tr>
           </tbody>
         </table>
       </div>
@@ -550,51 +433,33 @@ Select a token above to preview the config…</pre>
 </main>
 
 <!-- ── Toast Container ──────────────────────────────────────────── -->
-<div id="toast-container" class="fixed bottom-6 right-6 z-[100] space-y-3 pointer-events-none"></div>
+<div id="toast-container" class="fixed bottom-12 right-6 z-[100] space-y-4 pointer-events-none"></div>
 
-{% endif %} {# end if view == 'login' / else #}
+{% endif %}
 
 <!-- ═══════════════════════════════════════════════════════════════
-     JAVASCRIPT
+     JAVASCRIPT (Preserved Logic, Updated UI renders)
      ═══════════════════════════════════════════════════════════════ -->
 <script>
-// ── Utility: Toast Notifications ─────────────────────────────────────────────
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
-  const colours = {
-    success: 'bg-emerald-900/80 border-emerald-700/60 text-emerald-200',
-    error:   'bg-red-900/80 border-red-700/60 text-red-200',
-    info:    'bg-indigo-900/80 border-indigo-700/60 text-indigo-200',
-    warning: 'bg-amber-900/80 border-amber-700/60 text-amber-200',
-  };
-  const icons = {
-    success: '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>',
-    error:   '<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>',
-    info:    '<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>',
-    warning: '<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>',
-  };
-
-  const colourClass = colours[type] || colours.info;
-  const iconPath = icons[type] || icons.info;
+  const bg = type === 'error' ? 'bg-black text-white border-white' : 'bg-white text-black border-black';
+  const prefix = type === 'error' ? '[ERROR]' : type === 'success' ? '[OK]' : '[INFO]';
 
   const el = document.createElement('div');
-  el.className = `pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl border backdrop-blur-xl shadow-2xl text-sm font-medium max-w-sm animate-slide-up ${colourClass}`;
-  el.innerHTML = `
-    <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">${iconPath}</svg>
-    <span>${message}</span>
-  `;
+  el.className = `pointer-events-auto border-4 p-4 shadow-brutal font-bold uppercase text-sm ${bg} transform -rotate-1 animate-slide-up transition-all`;
+  el.innerHTML = `${prefix} ${message}`;
   container.appendChild(el);
 
   setTimeout(() => {
-    el.style.transition = 'opacity 0.3s ease';
     el.style.opacity = '0';
+    el.style.transform = 'translateY(20px)';
     setTimeout(() => el.remove(), 300);
   }, 3000);
 }
 
-// ── Tab Switching ─────────────────────────────────────────────────────────────
 const TAB_IDS = ['vault', 'tokens', 'connect', 'audit'];
 
 function switchTab(name) {
@@ -602,49 +467,34 @@ function switchTab(name) {
     document.getElementById(`panel-${id}`).classList.toggle('hidden', id !== name);
     document.getElementById(`tab-${id}`).classList.toggle('active', id === name);
   });
-
-  // Lazy-load data on tab activation
-  if (name === 'audit')   loadAuditLog();
-  if (name === 'tokens')  loadTokens();
-  if (name === 'vault')   { /* vault path already in DOM from Jinja2 */ }
+  if (name === 'audit') loadAuditLog();
+  if (name === 'tokens') loadTokens();
 }
 
-// ── Tab: Vault ────────────────────────────────────────────────────────────────
 async function updateVaultPath() {
   const input = document.getElementById('vault-path-input');
   const path = input.value.trim();
-  if (!path) { showToast('Please enter a vault path.', 'warning'); return; }
-
+  if (!path) { showToast('Enter path.', 'error'); return; }
   try {
     const res = await fetch('/dashboard/vault-path', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Update failed');
-
+    if (!res.ok) throw new Error(data.detail || 'Failed');
     document.getElementById('current-vault-path').textContent = data.vault_path;
     input.value = '';
-    showToast('Vault path updated successfully.', 'success');
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
+    showToast('Vault path updated.', 'success');
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 async function loadVaultStats() {
   const statsDiv = document.getElementById('vault-stats-content');
-  // Try to get a token from the table for the API call
   const firstTokenRow = document.querySelector('#tokens-tbody tr[data-token-full]');
   const token = firstTokenRow ? firstTokenRow.dataset.tokenFull : null;
-
-  if (!token) {
-    statsDiv.innerHTML = '<p class="text-amber-400 text-sm">No tokens available. Generate a token in the Tokens tab first, then return here.</p>';
-    return;
-  }
-
+  if (!token) { statsDiv.innerHTML = '<p class="bg-black text-white p-2 inline-block">NO TOKENS FOUND.</p>'; return; }
+  
   try {
-    statsDiv.innerHTML = '<p class="text-slate-400 text-sm animate-pulse">Loading…</p>';
+    statsDiv.innerHTML = '<p class="animate-pulse">LOADING...</p>';
     const res = await fetch('/api/files', { headers: { 'Authorization': `Bearer ${token}` } });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -654,33 +504,27 @@ async function loadVaultStats() {
     badge.classList.remove('hidden');
 
     statsDiv.innerHTML = `
-      <div class="grid grid-cols-2 gap-4">
-        <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40">
-          <div class="text-2xl font-bold text-indigo-300">${data.count}</div>
-          <div class="text-slate-400 text-xs mt-1">Markdown Files</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="border-4 border-black p-4 bg-gray-100">
+          <div class="text-4xl font-black">${data.count}</div>
+          <div class="mt-2 font-bold uppercase text-xs bg-black text-white inline-block px-1">MD FILES</div>
         </div>
-        <div class="bg-slate-800/40 rounded-xl p-4 border border-slate-700/40">
-          <div class="text-xs font-mono text-slate-300 break-all">${data.vault_path}</div>
-          <div class="text-slate-400 text-xs mt-1">Vault Root</div>
+        <div class="border-4 border-black p-4 bg-gray-100">
+          <div class="font-bold text-sm break-all">${data.vault_path}</div>
+          <div class="mt-2 font-bold uppercase text-xs bg-black text-white inline-block px-1">ROOT</div>
         </div>
       </div>
       ${data.count > 0 ? `
-      <div class="mt-4">
-        <div class="text-xs text-slate-500 font-medium mb-2">RECENT FILES (up to 10)</div>
-        <div class="space-y-1">
-          ${data.files.slice(0, 10).map(f => `
-            <div class="mono text-slate-400 text-xs bg-slate-800/30 rounded px-3 py-1.5">${f}</div>
-          `).join('')}
-          ${data.count > 10 ? `<div class="text-slate-500 text-xs px-3">…and ${data.count - 10} more</div>` : ''}
+      <div class="mt-6 border-t-4 border-black pt-4">
+        <div class="font-black text-lg mb-4">RECENT 10</div>
+        <div class="space-y-2">
+          ${data.files.slice(0, 10).map(f => `<div class="bg-black text-white px-2 py-1 text-xs break-all">${f}</div>`).join('')}
         </div>
       </div>` : ''}
     `;
-  } catch (err) {
-    statsDiv.innerHTML = `<p class="text-red-400 text-sm">Failed to load: ${err.message}</p>`;
-  }
+  } catch (err) { statsDiv.innerHTML = `<p class="bg-black text-white p-2 inline-block">ERROR: ${err.message}</p>`; }
 }
 
-// ── Tab: Tokens ───────────────────────────────────────────────────────────────
 async function loadTokens() {
   try {
     const res = await fetch('/dashboard/tokens');
@@ -688,31 +532,23 @@ async function loadTokens() {
     const data = await res.json();
     renderTokenTable(data.tokens);
     updateConnectTokenSelect(data.tokens);
-  } catch (err) {
-    console.warn('Could not load tokens:', err);
-  }
+  } catch (err) { console.warn(err); }
 }
 
 function renderTokenTable(tokens) {
   const tbody = document.getElementById('tokens-tbody');
   if (tokens.length === 0) {
-    tbody.innerHTML = '<tr id="empty-tokens-row"><td colspan="6" class="text-center text-slate-500 py-8">No tokens yet. Generate one above.</td></tr>';
+    tbody.innerHTML = '<tr id="empty-tokens-row"><td colspan="6" class="text-center font-bold uppercase py-8">NO TOKENS.</td></tr>';
     return;
   }
   tbody.innerHTML = tokens.map(tok => `
     <tr data-token-id="${tok.id}" data-token-full="${tok.token}">
-      <td class="text-slate-400 font-mono text-xs">#${tok.id}</td>
-      <td>
-        <span class="bg-indigo-900/30 text-indigo-300 border border-indigo-700/30 rounded-lg px-2.5 py-0.5 text-xs font-medium">
-          ${escapeHtml(tok.label)}
-        </span>
-      </td>
-      <td class="mono text-slate-300 text-xs">${tok.token.slice(0, 16)}…</td>
-      <td class="text-slate-400 text-xs">${tok.created}</td>
-      <td class="text-slate-400 text-xs">${tok.last_used || '—'}</td>
-      <td>
-        <button onclick="revokeToken(${tok.id}, this)" class="btn-danger">Revoke</button>
-      </td>
+      <td class="font-black">#${tok.id}</td>
+      <td><span class="bg-black text-white px-2 py-1 font-bold uppercase text-xs">${escapeHtml(tok.label)}</span></td>
+      <td class="font-bold">${tok.token.slice(0, 16)}...</td>
+      <td class="text-sm font-bold">${tok.created}</td>
+      <td class="text-sm font-bold">${tok.last_used || 'NEVER'}</td>
+      <td><button onclick="revokeToken(${tok.id}, this)" class="btn-danger">REVOKE</button></td>
     </tr>
   `).join('');
 }
@@ -721,222 +557,112 @@ function updateConnectTokenSelect(tokens) {
   const sel = document.getElementById('connect-token-select');
   if (!sel) return;
   const current = sel.value;
-  sel.innerHTML = '<option value="">— paste your token below —</option>' +
-    tokens.map(t =>
-      `<option value="${t.token}" data-label="${escapeHtml(t.label)}" ${t.token === current ? 'selected' : ''}>#${t.id} — ${escapeHtml(t.label)} (${t.token.slice(0, 12)}…)</option>`
-    ).join('');
+  sel.innerHTML = '<option value="">[ SELECT TOKEN ]</option>' +
+    tokens.map(t => `<option value="${t.token}" ${t.token === current ? 'selected' : ''}>#${t.id} - ${escapeHtml(t.label)}</option>`).join('');
 }
 
 async function generateToken() {
-  const labelInput = document.getElementById('token-label-input');
-  const label = (labelInput.value || 'default').trim();
-
+  const input = document.getElementById('token-label-input');
+  const label = (input.value || 'default').trim();
   try {
     const res = await fetch('/dashboard/tokens', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Failed to generate token');
-
-    // Show the new token box
+    if (!res.ok) throw new Error(data.detail);
     document.getElementById('new-token-value').textContent = data.token;
     document.getElementById('new-token-box').classList.remove('hidden');
-    labelInput.value = '';
-
-    // Reload the token table
+    input.value = '';
     await loadTokens();
-    showToast('Token generated! Save it now — it won\'t be shown again.', 'success');
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
+    showToast('TOKEN CREATED', 'success');
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
-async function revokeToken(tokenId, btn) {
-  if (!confirm(`Revoke token #${tokenId}? This cannot be undone.`)) return;
-
+async function revokeToken(id) {
+  if (!confirm(`REVOKE #${id}?`)) return;
   try {
-    const res = await fetch(`/dashboard/tokens/${tokenId}`, { method: 'DELETE' });
-    if (!res.ok && res.status !== 204) throw new Error(`HTTP ${res.status}`);
-
-    // Remove the row from the DOM
-    const row = document.querySelector(`tr[data-token-id="${tokenId}"]`);
-    if (row) row.remove();
-
-    // Show empty state if no rows left
-    const tbody = document.getElementById('tokens-tbody');
-    if (tbody.querySelectorAll('tr[data-token-id]').length === 0) {
-      tbody.innerHTML = '<tr id="empty-tokens-row"><td colspan="6" class="text-center text-slate-500 py-8">No tokens yet. Generate one above.</td></tr>';
-    }
-
-    showToast(`Token #${tokenId} revoked.`, 'success');
-    await loadTokens(); // refresh connect tab dropdown too
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
+    await fetch(`/dashboard/tokens/${id}`, { method: 'DELETE' });
+    document.querySelector(`tr[data-token-id="${id}"]`)?.remove();
+    showToast('TOKEN REVOKED', 'success');
+    await loadTokens();
+  } catch (err) { showToast(err.message, 'error'); }
 }
 
 function copyNewToken() {
   const val = document.getElementById('new-token-value').textContent;
   navigator.clipboard.writeText(val).then(() => {
     const btn = document.getElementById('copy-token-btn');
-    btn.querySelector('span').innerHTML = `
-      <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-      </svg>
-      Copied!
-    `;
-    setTimeout(() => {
-      btn.querySelector('span').innerHTML = `
-        <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z"/>
-          <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/>
-        </svg>
-        Copy
-      `;
-    }, 2000);
-    showToast('Token copied to clipboard.', 'success');
+    btn.textContent = 'COPIED!';
+    setTimeout(() => btn.textContent = 'COPY', 2000);
   });
 }
 
-// ── Tab: Connect ──────────────────────────────────────────────────────────────
 function updateConnectConfig() {
-  const sel   = document.getElementById('connect-token-select');
-  const manual = document.getElementById('connect-token-manual');
-  const out   = document.getElementById('connect-config-output');
-  const jsonPrev = document.getElementById('connect-json-preview');
-
-  const token = sel.value || manual.value.trim();
-  if (!token) {
-    out.value = '';
-    jsonPrev.textContent = 'Select a token above to preview the config…';
-    return;
-  }
-
-  const origin = window.location.origin;
-  const config = { server: origin, token };
-  const jsonStr = JSON.stringify(config, null, 2);
-  const b64 = btoa(JSON.stringify(config));
-
-  out.value = b64;
-  jsonPrev.textContent = jsonStr;
-}
-
-async function copyConnectConfig() {
+  const sel = document.getElementById('connect-token-select');
+  const man = document.getElementById('connect-token-manual');
   const out = document.getElementById('connect-config-output');
-  if (!out.value) { showToast('Generate a config first by selecting a token.', 'warning'); return; }
-
-  await navigator.clipboard.writeText(out.value);
-  const label = document.getElementById('copy-config-label');
-  label.innerHTML = `
-    <svg class="w-4 h-4 text-emerald-400" viewBox="0 0 20 20" fill="currentColor">
-      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-    </svg>
-    Copied!
-  `;
-  setTimeout(() => {
-    label.innerHTML = `
-      <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M8 2a1 1 0 000 2h2a1 1 0 100-2H8z"/>
-        <path d="M3 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v6h-4.586l1.293-1.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 000 1.414l3 3a1 1 0 001.414-1.414L10.414 13H15v3a2 2 0 01-2 2H5a2 2 0 01-2-2V5z"/>
-      </svg>
-      Copy to Clipboard
-    `;
-  }, 2000);
-  showToast('Config copied to clipboard!', 'success');
+  const prev = document.getElementById('connect-json-preview');
+  const token = sel.value || man.value.trim();
+  if (!token) { out.value = ''; prev.textContent = 'SELECT TOKEN TO PREVIEW'; return; }
+  const config = { server: window.location.origin, token };
+  out.value = btoa(JSON.stringify(config));
+  prev.textContent = JSON.stringify(config, null, 2);
 }
 
-// ── Tab: Audit Log ────────────────────────────────────────────────────────────
+function copyConnectConfig() {
+  const out = document.getElementById('connect-config-output');
+  if (!out.value) return;
+  navigator.clipboard.writeText(out.value).then(() => {
+    const btn = document.getElementById('copy-config-label');
+    btn.textContent = 'COPIED!';
+    setTimeout(() => btn.textContent = 'COPY BLOB', 2000);
+  });
+}
+
 let auditRefreshInterval = null;
 let auditPaused = false;
 
-const ACTION_COLOURS = {
-  READ:         'text-blue-300 bg-blue-900/20 border-blue-700/30',
-  READ_LIST:    'text-blue-300 bg-blue-900/20 border-blue-700/30',
-  WRITE:        'text-emerald-300 bg-emerald-900/20 border-emerald-700/30',
-  DELETE:       'text-red-300 bg-red-900/20 border-red-700/30',
-  CONNECT:      'text-purple-300 bg-purple-900/20 border-purple-700/30',
-  DISCONNECT:   'text-slate-300 bg-slate-800/40 border-slate-600/30',
-  SET_VAULT_PATH: 'text-amber-300 bg-amber-900/20 border-amber-700/30',
-};
-const METHOD_COLOURS = {
-  GET:    'text-blue-400',
-  POST:   'text-emerald-400',
-  DELETE: 'text-red-400',
-  WS:     'text-purple-400',
-};
-
-function actionColour(action) {
-  for (const [key, cls] of Object.entries(ACTION_COLOURS)) {
-    if (action && action.startsWith(key)) return cls;
-  }
-  return 'text-slate-300 bg-slate-800/40 border-slate-600/30';
-}
-
-function methodColour(method) {
-  return METHOD_COLOURS[method] || 'text-slate-400';
+function methodStyle(m) {
+  const styles = { GET: 'bg-black text-white', POST: 'bg-white text-black border-2 border-black', DELETE: 'bg-red-600 text-white', WS: 'bg-gray-400 text-black border-2 border-black' };
+  return styles[m] || 'bg-gray-200 text-black border-2 border-black';
 }
 
 async function loadAuditLog() {
   try {
     const res = await fetch('/dashboard/audit?limit=50');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error();
     const data = await res.json();
-    renderAuditTable(data.entries);
-    document.getElementById('audit-last-refresh').textContent =
-      'Last: ' + new Date().toLocaleTimeString();
-  } catch (err) {
-    console.warn('Audit load failed:', err);
-  }
-}
-
-function renderAuditTable(entries) {
-  const tbody = document.getElementById('audit-tbody');
-  if (!entries || entries.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-slate-500 py-8">No audit entries yet.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = entries.map(e => `
-    <tr>
-      <td class="mono text-slate-400 text-xs whitespace-nowrap">${e.ts}</td>
-      <td><span class="font-mono text-xs font-semibold ${methodColour(e.method)}">${escapeHtml(e.method)}</span></td>
-      <td class="mono text-slate-300 text-xs max-w-xs truncate">${e.path ? escapeHtml(e.path) : '<span class="text-slate-600">—</span>'}</td>
-      <td class="text-slate-400 text-xs">${e.token_id != null ? `#${e.token_id}` : '—'}</td>
-      <td>
-        <span class="inline-block border rounded-lg px-2 py-0.5 text-xs font-medium ${actionColour(e.action)}">
-          ${escapeHtml(e.action)}
-        </span>
-      </td>
-    </tr>
-  `).join('');
+    const tbody = document.getElementById('audit-tbody');
+    if (!data.entries.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center font-bold uppercase py-8">EMPTY LOG</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.entries.map(e => `
+      <tr>
+        <td class="font-bold text-xs">${e.ts}</td>
+        <td><span class="font-black px-2 py-1 text-xs ${methodStyle(e.method)}">${escapeHtml(e.method)}</span></td>
+        <td class="font-bold text-xs max-w-xs truncate">${e.path ? escapeHtml(e.path) : '—'}</td>
+        <td class="font-bold">${e.token_id != null ? `#${e.token_id}` : '—'}</td>
+        <td><span class="font-bold text-xs bg-gray-200 border-2 border-black px-2 py-1">${escapeHtml(e.action)}</span></td>
+      </tr>
+    `).join('');
+    document.getElementById('audit-last-refresh').textContent = 'SYNC: ' + new Date().toLocaleTimeString();
+  } catch (err) {}
 }
 
 function clearAuditView() {
-  document.getElementById('audit-tbody').innerHTML =
-    '<tr><td colspan="5" class="text-center text-slate-500 py-8">View cleared. Auto-refresh will restore entries.</td></tr>';
+  document.getElementById('audit-tbody').innerHTML = '<tr><td colspan="5" class="text-center font-bold uppercase py-8">CLEARED</td></tr>';
 }
 
 function toggleAuditRefresh() {
   auditPaused = !auditPaused;
-  const btn = document.getElementById('audit-pause-btn');
-  const icon = document.getElementById('audit-pause-icon');
+  const label = document.getElementById('audit-pause-label');
   if (auditPaused) {
     clearInterval(auditRefreshInterval);
-    btn.querySelector('span').innerHTML = `
-      <svg id="audit-pause-icon" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
-      </svg>
-      Resume
-    `;
+    label.textContent = 'RESUME';
   } else {
     startAuditRefresh();
-    btn.querySelector('span').innerHTML = `
-      <svg id="audit-pause-icon" class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
-      </svg>
-      Pause
-    `;
+    label.textContent = 'PAUSE';
   }
 }
 
@@ -945,23 +671,13 @@ function startAuditRefresh() {
   auditRefreshInterval = setInterval(loadAuditLog, 10000);
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 function escapeHtml(str) {
   if (str == null) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
-// ── Initialisation ────────────────────────────────────────────────────────────
 {% if view == 'dashboard' %}
-(function init() {
-  // Start audit auto-refresh (fires when audit tab is active)
-  startAuditRefresh();
-})();
+(function init() { startAuditRefresh(); })();
 {% endif %}
 </script>
 </body>
