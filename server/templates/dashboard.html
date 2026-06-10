@@ -390,16 +390,16 @@
         <div class="bg-neutral rounded-md p-md border border-border flex flex-col h-full">
           <div class="flex items-start justify-between mb-sm">
             <h3 class="text-label-lg text-primary-60">Quick Setup Instructions</h3>
-            <a href="obsidian://show-plugin?id=obsidian-api-sync" class="btn-primary !h-auto !py-2 !px-4 flex flex-col items-center">
-              <span class="text-label-md">Install</span>
-              <span class="text-[10px] font-normal opacity-80 mt-0.5">Plugin for Obsidian</span>
-            </a>
+            <button onclick="navigator.clipboard.writeText('https://github.com/ZenithFr/obsidian-api-sync').then(() => { const s = this.querySelector('.btn-text'); const old = s.textContent; s.textContent = 'Copied!'; setTimeout(() => s.textContent = old, 2000); })" class="btn-primary !h-auto !py-2 !px-4 flex flex-col items-center">
+              <span class="text-label-md btn-text">GitHub</span>
+              <span class="text-[10px] font-normal opacity-80 mt-0.5">Copy Repo Link</span>
+            </button>
           </div>
           <ol class="space-y-sm text-body-md text-muted list-decimal list-inside flex-1">
-            <li>Install the <strong>Obsidian API Sync</strong> plugin in your vault.</li>
-            <li>Enable the plugin and open its settings.</li>
-            <li>Click the <span class="text-on-surface font-medium">Quick Import</span> button.</li>
-            <li>Paste the copied payload and confirm.</li>
+            <li>Install the <strong>BRAT</strong> plugin from the Obsidian community list.</li>
+            <li>In BRAT settings, add Beta plugin: <span class="text-on-surface font-medium text-caption">ZenithFr/obsidian-api-sync</span></li>
+            <li>Enable the <strong>Obsidian API Sync</strong> plugin and open its settings.</li>
+            <li>Click the <span class="text-on-surface font-medium">Quick Import</span> button and paste the copied payload.</li>
           </ol>
           
           <div class="mt-md pt-md border-t border-border">
