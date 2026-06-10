@@ -1,6 +1,6 @@
 {
   "name": "obsidian-api-sync",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Remote vault sync via FastAPI and WebSockets",
   "main": "main.js",
   "scripts": {

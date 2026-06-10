@@ -8,7 +8,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   wsClient!: ObsidianApiSyncWsClient;
   private statusBarItem!: HTMLElement;
   private modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private isApplyingRemoteChange = false;
+  private remoteChangeLocks: Map<string, number> = new Map();
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -30,12 +30,17 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
         const normalizedRemote = payload.content.replace(/\r\n/g, '\n');
         if (normalizedLocal !== normalizedRemote) {
-          this.isApplyingRemoteChange = true;
+          // Cancel any pending outbound syncs for this file since it was just overwritten
+          if (this.modifyDebounceTimers.has(file.path)) {
+            clearTimeout(this.modifyDebounceTimers.get(file.path)!);
+            this.modifyDebounceTimers.delete(file.path);
+          }
+          // Lock for 800ms to allow Obsidian to update its UI without bouncing the change back
+          this.remoteChangeLocks.set(file.path, Date.now() + 800);
           try {
             await this.app.vault.modify(file, payload.content);
-          } finally {
-            // Allow some time for editor-change events to fire and be ignored
-            setTimeout(() => { this.isApplyingRemoteChange = false; }, 50);
+          } catch (err) {
+            console.error('[ObsidianApiSync] modify failed', err);
           }
         }
       } else if (!file) {
@@ -110,10 +115,12 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     this.registerEvent(
       this.app.workspace.on('editor-change', (editor, info) => {
         if (!this.settings.syncOnModify) return;
-        if (this.isApplyingRemoteChange) return;
 
         const file = info?.file || this.app.workspace.getActiveFile();
         if (!(file instanceof TFile)) return;
+
+        const lockExpiry = this.remoteChangeLocks.get(file.path);
+        if (lockExpiry && Date.now() < lockExpiry) return;
 
         if (this.modifyDebounceTimers.has(file.path)) {
           clearTimeout(this.modifyDebounceTimers.get(file.path)!);
@@ -138,7 +145,9 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       this.app.vault.on('modify', (file: TAbstractFile) => {
         if (!(file instanceof TFile)) return;
         if (!this.settings.syncOnModify) return;
-        if (this.isApplyingRemoteChange) return; // ignore our own remote updates
+        
+        const lockExpiry = this.remoteChangeLocks.get(file.path);
+        if (lockExpiry && Date.now() < lockExpiry) return; // ignore our own remote updates
 
         // If a timer is already running (e.g. from editor-change), don't override it
         if (this.modifyDebounceTimers.has(file.path)) return;
@@ -162,7 +171,9 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       this.app.vault.on('create', (file: TAbstractFile) => {
         if (!(file instanceof TFile)) return;
         if (!this.settings.syncOnModify) return;
-        if (this.isApplyingRemoteChange) return;
+        
+        const lockExpiry = this.remoteChangeLocks.get(file.path);
+        if (lockExpiry && Date.now() < lockExpiry) return;
 
         // Give Obsidian a tiny tick to finish writing the file to disk
         setTimeout(async () => {
@@ -232,29 +243,30 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       let created = 0;
       let updated = 0;
 
-      this.isApplyingRemoteChange = true;
-      try {
-        for (const item of data.files) {
-          const path = item.path;
-          const remoteContent = item.content;
-          
-          const localFile = this.app.vault.getAbstractFileByPath(path);
-          if (localFile instanceof TFile) {
-            const localContent = await this.app.vault.read(localFile);
-            const normalizedLocal = localContent.replace(/\r\n/g, '\n');
-            const normalizedRemote = remoteContent.replace(/\r\n/g, '\n');
-            if (normalizedLocal !== normalizedRemote) {
-              await this.app.vault.modify(localFile, remoteContent);
-              updated++;
+      for (const item of data.files) {
+        const path = item.path;
+        const remoteContent = item.content;
+        
+        const localFile = this.app.vault.getAbstractFileByPath(path);
+        if (localFile instanceof TFile) {
+          const localContent = await this.app.vault.read(localFile);
+          const normalizedLocal = localContent.replace(/\r\n/g, '\n');
+          const normalizedRemote = remoteContent.replace(/\r\n/g, '\n');
+          if (normalizedLocal !== normalizedRemote) {
+            if (this.modifyDebounceTimers.has(localFile.path)) {
+              clearTimeout(this.modifyDebounceTimers.get(localFile.path)!);
+              this.modifyDebounceTimers.delete(localFile.path);
             }
-          } else if (!localFile) {
-            await this.ensureFolderExists(path);
-            await this.app.vault.create(path, remoteContent);
-            created++;
+            this.remoteChangeLocks.set(localFile.path, Date.now() + 800);
+            await this.app.vault.modify(localFile, remoteContent);
+            updated++;
           }
+        } else if (!localFile) {
+          this.remoteChangeLocks.set(path, Date.now() + 800);
+          await this.ensureFolderExists(path);
+          await this.app.vault.create(path, remoteContent);
+          created++;
         }
-      } finally {
-        setTimeout(() => { this.isApplyingRemoteChange = false; }, 50);
       }
       
       if (created > 0 || updated > 0) {
