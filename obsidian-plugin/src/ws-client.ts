@@ -34,9 +34,10 @@ export class ObsidianApiSyncWsClient {
   private _token = '';
 
   // Callbacks set by the plugin
-  public onFileChanged: ((payload: FileChangedPayload) => void) | null = null;
-  public onFileDeleted: ((payload: FileDeletedPayload) => void) | null = null;
-  public onFileRenamed: ((payload: FileRenamedPayload) => void) | null = null;
+  public onFileChanged?: (payload: FileChangedPayload) => void;
+  public onFileDeleted?: (payload: FileDeletedPayload) => void;
+  public onFileRenamed?: (payload: FileRenamedPayload) => void;
+  public onFolderCreated?: (payload: FolderCreatedPayload) => void;
   public onStateChange: ((state: WsState) => void) | null = null;
   public onConnected: ((clientId: string) => void) | null = null;
   public onError: ((payload: ErrorPayload) => void) | null = null;
@@ -161,18 +162,31 @@ export class ObsidianApiSyncWsClient {
   sendFileDelete(path: string): void {
     const payload: FileDeletePayload = { type: 'FILE_DELETE', path };
     if (this.state === WsState.CONNECTED && this.ws) {
-      this.rawSend(payload as unknown as FileModifyPayload); // cast for rawSend
+      this.rawSend(payload);
     } else {
-      this.enqueue(payload as unknown as FileModifyPayload);
+      this.enqueue(payload);
     }
   }
 
   sendFileRename(oldPath: string, newPath: string): void {
     const payload: FileRenamePayload = { type: 'FILE_RENAME', path: oldPath, new_path: newPath };
     if (this.state === WsState.CONNECTED && this.ws) {
-      this.rawSend(payload as unknown as FileModifyPayload); // cast for rawSend
+      this.rawSend(payload);
     } else {
-      this.enqueue(payload as unknown as FileModifyPayload);
+      this.enqueue(payload);
+    }
+  }
+
+  sendFolderCreate(path: string): void {
+    const payload: FolderCreatePayload = {
+      type: 'FOLDER_CREATE',
+      path,
+    };
+
+    if (this.state === WsState.CONNECTED && this.ws) {
+      this.rawSend(payload);
+    } else {
+      this.enqueue(payload);
     }
   }
 
@@ -233,17 +247,14 @@ export class ObsidianApiSyncWsClient {
           this.onFileChanged(payload);
         }
         break;
-
       case 'FILE_DELETED':
-        if (this.onFileDeleted) {
-          this.onFileDeleted(payload);
-        }
+        if (this.onFileDeleted) this.onFileDeleted(payload);
         break;
-
       case 'FILE_RENAMED':
-        if (this.onFileRenamed) {
-          this.onFileRenamed(payload as FileRenamedPayload);
-        }
+        if (this.onFileRenamed) this.onFileRenamed(payload as FileRenamedPayload);
+        break;
+      case 'FOLDER_CREATED':
+        if (this.onFolderCreated) this.onFolderCreated(payload as FolderCreatedPayload);
         break;
 
       case 'CONNECTED': {
@@ -265,7 +276,7 @@ export class ObsidianApiSyncWsClient {
     }
   }
 
-  private rawSend(payload: FileModifyPayload): void {
+  private rawSend(payload: OutboundPayload): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.warn('[ObsidianApiSync] rawSend called but socket not open — queuing.');
       this.enqueue(payload);

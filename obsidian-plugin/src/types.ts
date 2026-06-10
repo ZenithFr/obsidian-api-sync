@@ -17,7 +17,15 @@ export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   reconnectIntervalMs: 3000,
 };
 
-// Inbound from server → client
+export interface FolderCreatePayload {
+  type: 'FOLDER_CREATE';
+  path: string;
+}
+
+export type OutboundPayload = FileModifyPayload | FileDeletePayload | FileRenamePayload | FolderCreatePayload;
+
+// ─── Server to Client ───────────────────────────────────────────────────────
+
 export interface FileChangedPayload {
   type: 'FILE_CHANGED';
   path: string;
@@ -37,6 +45,13 @@ export interface FileRenamedPayload {
   type: 'FILE_RENAMED';
   old_path: string;
   new_path: string;
+  source: 'ws' | 'rest';
+  ts: string;
+}
+
+export interface FolderCreatedPayload {
+  type: 'FOLDER_CREATED';
+  path: string;
   source: 'ws' | 'rest';
   ts: string;
 }

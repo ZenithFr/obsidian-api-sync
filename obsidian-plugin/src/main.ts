@@ -54,6 +54,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       }
     };
 
+    this.wsClient.onFolderCreated = async (payload) => {
+      const folder = this.app.vault.getAbstractFileByPath(payload.path);
+      if (!folder) {
+        this.remoteChangeLocks.set(payload.path, Date.now() + 800);
+        await this.ensureFolderExists(payload.path);
+      }
+    };
+
     this.wsClient.onFileDeleted = async (payload) => {
       const file = this.app.vault.getAbstractFileByPath(payload.path);
       if (file) {
@@ -169,25 +177,30 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     // 3. New File Creation
     this.registerEvent(
       this.app.vault.on('create', (file: TAbstractFile) => {
-        if (!(file instanceof TFile)) return;
         if (!this.settings.syncOnModify) return;
         
         const lockExpiry = this.remoteChangeLocks.get(file.path);
         if (lockExpiry && Date.now() < lockExpiry) return;
 
-        // Give Obsidian a tiny tick to finish writing the file to disk
-        setTimeout(async () => {
+        if (file instanceof TFile) {
+          // Give Obsidian a tiny tick to finish writing the file to disk
+          setTimeout(async () => {
+            if (this.wsClient.getState() === WsState.CONNECTED) {
+              const content = await this.app.vault.read(file);
+              this.wsClient.sendFileModify(file.path, content);
+            }
+          }, 300);
+        } else {
+          // It's a folder
           if (this.wsClient.getState() === WsState.CONNECTED) {
-            const content = await this.app.vault.read(file);
-            this.wsClient.sendFileModify(file.path, content);
+            this.wsClient.sendFolderCreate(file.path);
           }
-        }, 300);
+        }
       })
     );
 
     this.registerEvent(
       this.app.vault.on('delete', (file: TAbstractFile) => {
-        if (!(file instanceof TFile)) return;
         if (!this.settings.syncOnModify) return;
         if (this.wsClient.getState() === WsState.CONNECTED) {
           this.wsClient.sendFileDelete(file.path);
@@ -197,7 +210,6 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
     this.registerEvent(
       this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-        if (!(file instanceof TFile)) return;
         if (!this.settings.syncOnModify) return;
         if (this.wsClient.getState() === WsState.CONNECTED) {
           this.wsClient.sendFileRename(oldPath, file.path);
