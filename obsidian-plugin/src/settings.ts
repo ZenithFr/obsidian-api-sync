@@ -11,6 +11,7 @@ interface ObsidianApiSyncPluginLike {
     serverUrl: string;
     apiToken: string;
     syncOnModify: boolean;
+    syncDebounceMs: number;
     autoReconnect: boolean;
     reconnectIntervalMs: number;
   };
@@ -142,6 +143,21 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.syncOnModify)
           .onChange(async (value) => {
             this.plugin.settings.syncOnModify = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // ── Sync Delay (ms) ───────────────────────────────────────────────────────
+    new Setting(containerEl)
+      .setName('Sync Delay (ms)')
+      .setDesc('Delay before sending changes. Lower values feel more instant (letter-by-letter) but use more bandwidth. High values (800ms) save bandwidth.')
+      .addSlider((slider) =>
+        slider
+          .setLimits(50, 2000, 50)
+          .setValue(this.plugin.settings.syncDebounceMs)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            this.plugin.settings.syncDebounceMs = value;
             await this.plugin.saveSettings();
           })
       );

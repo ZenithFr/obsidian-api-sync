@@ -3,6 +3,7 @@ export interface ObsidianApiSyncSettings {
   serverUrl: string;
   apiToken: string;
   syncOnModify: boolean;
+  syncDebounceMs: number;
   autoReconnect: boolean;
   reconnectIntervalMs: number;
 }
@@ -11,6 +12,7 @@ export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   serverUrl: '',
   apiToken: '',
   syncOnModify: true,
+  syncDebounceMs: 150,
   autoReconnect: true,
   reconnectIntervalMs: 3000,
 };
