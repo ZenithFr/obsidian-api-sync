@@ -1,5 +1,5 @@
 """
-routers/ws.py — WebSocket endpoint and connection manager for Hermes Vault Sync API.
+routers/ws.py — WebSocket endpoint and connection manager for Obsidian API Sync API.
 
 Provides real-time bidirectional sync between the server vault and any connected
 Obsidian plugin clients (or other consumers).  All file-write events are

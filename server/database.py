@@ -1,5 +1,5 @@
 """
-database.py — Async SQLite access layer for Hermes Vault Sync API.
+database.py — Async SQLite access layer for Obsidian API Sync API.
 
 All DB operations are fully async via aiosqlite.  The vault path is stored in
 the `server_config` table so it can be updated at runtime without restarting

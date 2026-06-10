@@ -186,7 +186,7 @@ Parent directories are created automatically if they do not exist.
 
 All connected Obsidian clients instantly receive a `FILE_CHANGED` WebSocket broadcast.
 
-An AI agent (Hermes) should use this to save new knowledge, update notes, or write
+An AI agent (Obsidian API Sync) should use this to save new knowledge, update notes, or write
 structured data into the vault.  Always fetch the current content first (GET) to
 avoid inadvertent data loss.
 """,

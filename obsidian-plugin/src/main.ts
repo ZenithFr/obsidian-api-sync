@@ -1,11 +1,11 @@
 import { Plugin, TFile, Notice, requestUrl } from 'obsidian';
-import { HermesSettings, DEFAULT_SETTINGS } from './types';
-import { HermesWsClient, WsState, createWsClient } from './ws-client';
-import { HermesSettingTab } from './settings';
+import { ObsidianApiSyncSettings, DEFAULT_SETTINGS } from './types';
+import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
+import { ObsidianApiSyncSettingTab } from './settings';
 
-export default class HermesPlugin extends Plugin {
-  settings!: HermesSettings;
-  wsClient!: HermesWsClient;
+export default class ObsidianApiSyncPlugin extends Plugin {
+  settings!: ObsidianApiSyncSettings;
+  wsClient!: ObsidianApiSyncWsClient;
   private statusBarItem!: HTMLElement;
   private modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
@@ -37,7 +37,7 @@ export default class HermesPlugin extends Plugin {
           await this.ensureFolderExists(payload.path);
           await this.app.vault.create(payload.path, payload.content);
         } catch (err) {
-          console.error('[Hermes] Failed to create file from remote change:', err);
+          console.error('[ObsidianApiSync] Failed to create file from remote change:', err);
         }
       }
     };
@@ -48,7 +48,7 @@ export default class HermesPlugin extends Plugin {
         try {
           await this.app.vault.trash(file, false); // move to system trash
         } catch (err) {
-          console.error('[Hermes] Failed to process remote delete:', err);
+          console.error('[ObsidianApiSync] Failed to process remote delete:', err);
         }
       }
     };
@@ -60,7 +60,7 @@ export default class HermesPlugin extends Plugin {
           await this.ensureFolderExists(payload.new_path);
           await this.app.vault.rename(file, payload.new_path);
         } catch (err) {
-          console.error('[Hermes] Failed to process remote rename:', err);
+          console.error('[ObsidianApiSync] Failed to process remote rename:', err);
         }
       }
     };
@@ -70,16 +70,16 @@ export default class HermesPlugin extends Plugin {
     };
 
     this.wsClient.onConnected = (clientId: string) => {
-      console.log(`[Hermes] Connected. Client ID: ${clientId}`);
+      console.log(`[ObsidianApiSync] Connected. Client ID: ${clientId}`);
       this.pullAllFiles();
     };
 
     this.wsClient.onError = (payload) => {
-      new Notice(`⚠️ Hermes error [${payload.code}]: ${payload.message}`);
+      new Notice(`⚠️ ObsidianApiSync error [${payload.code}]: ${payload.message}`);
     };
 
     // ── Settings Tab ──────────────────────────────────────────────────────────
-    this.addSettingTab(new HermesSettingTab(this.app, this));
+    this.addSettingTab(new ObsidianApiSyncSettingTab(this.app, this));
 
     // ── Status Bar ────────────────────────────────────────────────────────────
     this.statusBarItem = this.addStatusBarItem();
@@ -92,7 +92,7 @@ export default class HermesPlugin extends Plugin {
 
     // ── Commands ──────────────────────────────────────────────────────────────
     this.addCommand({
-      id: 'hermes-pull-all',
+      id: 'ObsidianApiSync-pull-all',
       name: 'Pull all files from server',
       callback: () => this.pullAllFiles(),
     });
@@ -139,15 +139,15 @@ export default class HermesPlugin extends Plugin {
     );
 
     // ── Ribbon Icon ───────────────────────────────────────────────────────────
-    this.addRibbonIcon('sync', 'Hermes Vault Sync', () => {
+    this.addRibbonIcon('sync', 'Obsidian API Sync', () => {
       const state = this.wsClient.getState();
       const messages: Record<WsState, string> = {
-        [WsState.CONNECTED]: '🟢 Hermes: Connected and syncing.',
-        [WsState.CONNECTING]: '🟡 Hermes: Connecting to server…',
-        [WsState.RECONNECTING]: '🟡 Hermes: Reconnecting to server…',
-        [WsState.DISCONNECTED]: '🔴 Hermes: Disconnected. Check settings.',
+        [WsState.CONNECTED]: '🟢 ObsidianApiSync: Connected and syncing.',
+        [WsState.CONNECTING]: '🟡 ObsidianApiSync: Connecting to server…',
+        [WsState.RECONNECTING]: '🟡 ObsidianApiSync: Reconnecting to server…',
+        [WsState.DISCONNECTED]: '🔴 ObsidianApiSync: Disconnected. Check settings.',
       };
-      new Notice(messages[state] ?? `Hermes state: ${state}`);
+      new Notice(messages[state] ?? `ObsidianApiSync state: ${state}`);
     });
   }
 
@@ -164,7 +164,7 @@ export default class HermesPlugin extends Plugin {
   async pullAllFiles(): Promise<void> {
     if (!this.settings.serverUrl || !this.settings.apiToken) return;
     
-    new Notice('Hermes: Syncing files from server...');
+    new Notice('ObsidianApiSync: Syncing files from server...');
     try {
       const listResp = await requestUrl({
         url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files?include_content=true`,
@@ -197,13 +197,13 @@ export default class HermesPlugin extends Plugin {
       }
       
       if (created > 0 || updated > 0) {
-        new Notice(`Hermes Sync Complete! Created: ${created}, Updated: ${updated}`);
+        new Notice(`ObsidianApiSync Complete! Created: ${created}, Updated: ${updated}`);
       } else {
-        new Notice('Hermes Sync Complete: Vault is up to date.');
+        new Notice('ObsidianApiSync Complete: Vault is up to date.');
       }
     } catch (err) {
-      console.error('[Hermes] Pull failed:', err);
-      new Notice('Hermes Sync Failed. Check console.');
+      console.error('[ObsidianApiSync] Pull failed:', err);
+      new Notice('ObsidianApiSync Failed. Check console.');
     }
   }
 
@@ -229,8 +229,8 @@ export default class HermesPlugin extends Plugin {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : String(err);
-      new Notice(`⚠️ Hermes HTTP fallback failed: ${message}`);
-      console.error('[Hermes] HTTP fallback error:', err);
+      new Notice(`⚠️ ObsidianApiSync HTTP fallback failed: ${message}`);
+      console.error('[ObsidianApiSync] HTTP fallback error:', err);
     }
   }
 
@@ -240,7 +240,7 @@ export default class HermesPlugin extends Plugin {
     this.settings = Object.assign(
       {},
       DEFAULT_SETTINGS,
-      (await this.loadData()) as Partial<HermesSettings>
+      (await this.loadData()) as Partial<ObsidianApiSyncSettings>
     );
   }
 
@@ -270,11 +270,11 @@ export default class HermesPlugin extends Plugin {
 
   private updateStatusBar(state: WsState): void {
     const labels: Record<WsState, string> = {
-      [WsState.CONNECTED]: '🟢 Hermes',
-      [WsState.CONNECTING]: '🟡 Hermes',
-      [WsState.RECONNECTING]: '🟡 Hermes',
-      [WsState.DISCONNECTED]: '🔴 Hermes',
+      [WsState.CONNECTED]: '🟢 ObsidianApiSync',
+      [WsState.CONNECTING]: '🟡 ObsidianApiSync',
+      [WsState.RECONNECTING]: '🟡 ObsidianApiSync',
+      [WsState.DISCONNECTED]: '🔴 ObsidianApiSync',
     };
-    this.statusBarItem.setText(labels[state] ?? 'Hermes');
+    this.statusBarItem.setText(labels[state] ?? 'ObsidianApiSync');
   }
 }

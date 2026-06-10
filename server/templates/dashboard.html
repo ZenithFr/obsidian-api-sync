@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hermes Vault Sync{% if view == 'dashboard' %} — Dashboard{% else %} — Login{% endif %}</title>
+  <title>Obsidian API Sync{% if view == 'dashboard' %} — Dashboard{% else %} — Login{% endif %}</title>
 
   <!-- Google Fonts: Space Mono for pure Brutalist aesthetics -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -150,8 +150,8 @@
 
     <!-- Title -->
     <div class="text-center mb-8 bg-white border-4 border-black py-4 shadow-brutal transform -rotate-2 hover:rotate-0 transition-transform">
-      <h1 class="text-4xl font-black text-black tracking-tighter uppercase">Hermes</h1>
-      <h2 class="text-xl font-bold text-black uppercase tracking-widest bg-black text-white inline-block px-2 mt-1">Vault Sync</h2>
+      <h1 class="text-4xl font-black text-black tracking-tighter uppercase">Obsidian</h1>
+      <h2 class="text-xl font-bold text-black uppercase tracking-widest bg-black text-white inline-block px-2 mt-1">API Sync</h2>
     </div>
 
     <!-- Login Card -->
@@ -197,11 +197,11 @@
     <!-- Logo -->
     <div class="flex items-center gap-4">
       <div class="w-12 h-12 bg-black text-white flex items-center justify-center font-black text-2xl border-4 border-black">
-        H
+        O
       </div>
       <div>
-        <span class="font-black text-black text-xl leading-none block uppercase tracking-tighter">Hermes</span>
-        <span class="font-bold bg-black text-white text-xs px-1 uppercase tracking-widest mt-1 inline-block">Vault Sync</span>
+        <span class="font-black text-black text-xl leading-none block uppercase tracking-tighter">Obsidian</span>
+        <span class="font-bold bg-black text-white text-xs px-1 uppercase tracking-widest mt-1 inline-block">API Sync</span>
       </div>
     </div>
 
@@ -394,7 +394,7 @@
       <div class="mt-8 border-4 border-black p-6 bg-black text-white">
         <div class="font-black uppercase text-xl mb-4 bg-white text-black inline-block px-2">IMPORT INSTRUCTIONS</div>
         <ol class="font-bold uppercase text-sm space-y-2 list-decimal list-inside">
-          <li>Open Obsidian settings > Hermes Sync</li>
+          <li>Open Obsidian settings > Obsidian API Sync</li>
           <li>Click <span class="bg-white text-black px-1">QUICK IMPORT</span></li>
           <li>Paste the BLOB and click IMPORT</li>
         </ol>
@@ -458,11 +458,11 @@ function toggleTheme() {
   const root = document.documentElement;
   root.classList.toggle('theme-inverted');
   const isDark = root.classList.contains('theme-inverted');
-  localStorage.setItem('hermes-theme', isDark ? 'dark' : 'light');
+  localStorage.setItem('obsidian-sync-theme', isDark ? 'dark' : 'light');
   document.getElementById('theme-icon').textContent = isDark ? '☼' : '☾';
 }
 
-if (localStorage.getItem('hermes-theme') === 'dark') {
+if (localStorage.getItem('obsidian-sync-theme') === 'dark') {
   document.documentElement.classList.add('theme-inverted');
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('theme-icon').textContent = '☼';

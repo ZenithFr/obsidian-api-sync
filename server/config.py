@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str  # Required — no default. Protects /dashboard.
 
     # ── Persistence ────────────────────────────────────────────────────────────
-    DB_PATH: str = "./hermes.db"
+    DB_PATH: str = "./obsidian-sync.db"
 
     # Seed value only: written to server_config on first run if vault_path is absent.
     DEFAULT_VAULT_PATH: str = "./vault"

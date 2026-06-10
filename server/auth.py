@@ -1,5 +1,5 @@
 """
-auth.py — FastAPI authentication dependencies for Hermes Vault Sync API.
+auth.py — FastAPI authentication dependencies for Obsidian API Sync API.
 
 Provides two helpers:
   - get_current_token: a FastAPI Depends() guard for HTTP routes.

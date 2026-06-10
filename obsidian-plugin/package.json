@@ -1,7 +1,7 @@
 {
-  "name": "obsidian-hermes-sync",
+  "name": "obsidian-api-sync",
   "version": "1.0.0",
-  "description": "Hermes Vault Sync Obsidian Plugin",
+  "description": "Obsidian API Sync Plugin",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

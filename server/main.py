@@ -1,5 +1,5 @@
 """
-main.py — Application entry-point for Hermes Vault Sync API.
+main.py — Application entry-point for Obsidian API Sync.
 
 Wires together:
   - FastAPI application with lifespan (DB init + vault dir creation)
@@ -68,11 +68,11 @@ async def lifespan(app: FastAPI):
 # ── Application ───────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Hermes Vault Sync API",
-    description="""## Hermes — Remote Obsidian Vault Sync
+    title="Obsidian API Sync",
+    description="""## Obsidian API Sync
 
 This API is the Single Source of Truth (SSOT) for a markdown vault.
-It allows both a human (via the Obsidian Hermes Sync plugin) and an AI agent
+It allows both a human (via the Obsidian API Sync plugin) and an AI agent
 to read, write, and delete markdown notes in real-time.
 
 ### Authentication
@@ -103,7 +103,7 @@ Each endpoint description explains exactly when and how an AI agent should use i
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SECRET_KEY,
-    session_cookie="hermes_admin",
+    session_cookie="obsidian_api_sync_admin",
     max_age=86400,  # 24 hours
     https_only=False,  # Set True behind TLS in production.
 )

@@ -21,7 +21,7 @@ const MAX_QUEUE_SIZE = 50;
 const DEBOUNCE_MS = 800;
 const MAX_RECONNECT_DELAY_MS = 30000;
 
-export class HermesWsClient {
+export class ObsidianApiSyncWsClient {
   private ws: WebSocket | null = null;
   private state: WsState = WsState.DISCONNECTED;
   private reconnectAttempt = 0;
@@ -70,7 +70,7 @@ export class HermesWsClient {
     try {
       socket = new WebSocket(wsUrl);
     } catch (err) {
-      console.error('[Hermes] WebSocket construction failed:', err);
+      console.error('[ObsidianApiSync] WebSocket construction failed:', err);
       this.setState(WsState.DISCONNECTED);
       return;
     }
@@ -88,7 +88,7 @@ export class HermesWsClient {
     };
 
     socket.onerror = (event: Event) => {
-      console.error('[Hermes] WebSocket error:', event);
+      console.error('[ObsidianApiSync] WebSocket error:', event);
     };
 
     socket.onclose = (event: CloseEvent) => {
@@ -97,7 +97,7 @@ export class HermesWsClient {
 
       // Code 4001 = authentication error — do NOT reconnect
       if (event.code === 4001) {
-        console.warn('[Hermes] Auth error (4001) — stopping reconnect.');
+        console.warn('[ObsidianApiSync] Auth error (4001) — stopping reconnect.');
         this.setState(WsState.DISCONNECTED);
         if (this.onError) {
           this.onError({
@@ -204,7 +204,7 @@ export class HermesWsClient {
     const delayMs = Math.min(1000 * Math.pow(2, this.reconnectAttempt - 1), MAX_RECONNECT_DELAY_MS);
 
     console.log(
-      `[Hermes] Reconnecting in ${delayMs}ms (attempt ${this.reconnectAttempt})…`
+      `[ObsidianApiSync] Reconnecting in ${delayMs}ms (attempt ${this.reconnectAttempt})…`
     );
 
     if (this.reconnectTimer !== null) {
@@ -223,7 +223,7 @@ export class HermesWsClient {
     try {
       payload = JSON.parse(event.data as string) as InboundPayload;
     } catch (err) {
-      console.error('[Hermes] Failed to parse message:', err, event.data);
+      console.error('[ObsidianApiSync] Failed to parse message:', err, event.data);
       return;
     }
 
@@ -261,13 +261,13 @@ export class HermesWsClient {
         break;
 
       default:
-        console.warn('[Hermes] Unknown payload type:', (payload as { type: string }).type);
+        console.warn('[ObsidianApiSync] Unknown payload type:', (payload as { type: string }).type);
     }
   }
 
   private rawSend(payload: FileModifyPayload): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn('[Hermes] rawSend called but socket not open — queuing.');
+      console.warn('[ObsidianApiSync] rawSend called but socket not open — queuing.');
       this.enqueue(payload);
       return;
     }
@@ -275,7 +275,7 @@ export class HermesWsClient {
     try {
       this.ws.send(JSON.stringify(payload));
     } catch (err) {
-      console.error('[Hermes] Failed to send payload:', err);
+      console.error('[ObsidianApiSync] Failed to send payload:', err);
       this.enqueue(payload);
     }
   }
@@ -312,6 +312,6 @@ export class HermesWsClient {
 }
 
 /** Factory function — preferred entry-point for the plugin. */
-export function createWsClient(): HermesWsClient {
-  return new HermesWsClient();
+export function createWsClient(): ObsidianApiSyncWsClient {
+  return new ObsidianApiSyncWsClient();
 }

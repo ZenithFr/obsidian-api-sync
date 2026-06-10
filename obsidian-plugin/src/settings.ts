@@ -3,10 +3,10 @@ import { WsState } from './ws-client';
 import type { QuickImportConfig } from './types';
 
 /**
- * Minimal interface describing the parts of HermesPlugin that
- * HermesSettingTab needs — avoids a circular import cycle.
+ * Minimal interface describing the parts of ObsidianApiSyncPlugin that
+ * ObsidianApiSyncSettingTab needs — avoids a circular import cycle.
  */
-interface HermesPluginLike {
+interface ObsidianApiSyncPluginLike {
   settings: {
     serverUrl: string;
     apiToken: string;
@@ -23,12 +23,12 @@ interface HermesPluginLike {
   connectWs(): void;
 }
 
-export class HermesSettingTab extends PluginSettingTab {
-  private plugin: HermesPluginLike;
+export class ObsidianApiSyncSettingTab extends PluginSettingTab {
+  private plugin: ObsidianApiSyncPluginLike;
 
-  constructor(app: App, plugin: HermesPluginLike) {
+  constructor(app: App, plugin: ObsidianApiSyncPluginLike) {
     // PluginSettingTab requires a Plugin instance; the interface is compatible
-    // at runtime because HermesPlugin extends Plugin.
+    // at runtime because ObsidianApiSyncPlugin extends Plugin.
     super(app, plugin as never);
     this.plugin = plugin;
   }
@@ -37,13 +37,13 @@ export class HermesSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Hermes Vault Sync' });
+    containerEl.createEl('h2', { text: 'ObsidianApiSync Vault Sync' });
 
     // ── Quick Import ─────────────────────────────────────────────────────────
     containerEl.createEl('h3', { text: '⚡ Quick Import' });
 
     const importDesc = containerEl.createEl('p', {
-      text: 'Paste the Base64 config string from the Hermes Dashboard to auto-fill your Server URL and API Token.',
+      text: 'Paste the Base64 config string from the ObsidianApiSync Dashboard to auto-fill your Server URL and API Token.',
     });
     importDesc.style.color = 'var(--text-muted)';
     importDesc.style.fontSize = '0.9em';
@@ -55,7 +55,7 @@ export class HermesSettingTab extends PluginSettingTab {
     importWrapper.style.marginBottom = '16px';
 
     const textarea = importWrapper.createEl('textarea');
-    textarea.placeholder = 'Paste Base64 config from Hermes Dashboard…';
+    textarea.placeholder = 'Paste Base64 config from ObsidianApiSync Dashboard…';
     textarea.rows = 3;
     textarea.style.flex = '1';
     textarea.style.fontFamily = 'monospace';
@@ -103,7 +103,7 @@ export class HermesSettingTab extends PluginSettingTab {
     // ── Server URL ────────────────────────────────────────────────────────────
     new Setting(containerEl)
       .setName('Server URL')
-      .setDesc('Base URL of the Hermes API server (e.g. http://localhost:7010)')
+      .setDesc('Base URL of the ObsidianApiSync API server (e.g. http://localhost:7010)')
       .addText((text) =>
         text
           .setPlaceholder('http://localhost:7010')
@@ -117,7 +117,7 @@ export class HermesSettingTab extends PluginSettingTab {
     // ── API Token ─────────────────────────────────────────────────────────────
     new Setting(containerEl)
       .setName('API Token')
-      .setDesc('Bearer token used to authenticate with the Hermes server.')
+      .setDesc('Bearer token used to authenticate with the ObsidianApiSync server.')
       .addText((text) => {
         text
           .setPlaceholder('your-secret-token')

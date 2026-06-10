@@ -1,18 +1,18 @@
-# Hermes Vault Sync
+# Obsidian API Sync
 
 > A Remote Vault Sync Ecosystem for Obsidian & AI Agents
 
-**Hermes** is a headless CMS / sync layer that acts as a Single Source of Truth for markdown files. A human edits notes in Obsidian; an AI agent reads and writes via REST. Both see changes in real time over WebSockets.
+**Obsidian API Sync** is a headless CMS / sync layer that acts as a Single Source of Truth for markdown files. A human edits notes in Obsidian; an AI agent reads and writes via REST. Both see changes in real time over WebSockets.
 
 ```
 ┌─────────────┐   WebSocket (live sync)   ┌─────────────────────┐
 │   Obsidian  │ ◄────────────────────────► │   FastAPI Server    │
-│   Plugin    │                            │   (hermes-api)      │
+│   Plugin    │                            │   (Obsidian API Sync-api)      │
 └─────────────┘                            │                     │
                                            │  SQLite  │  Vault   │
 ┌─────────────┐   REST /api/files          │  tokens  │  .md     │
 │  AI Agent   │ ◄────────────────────────► │  audit   │  files   │
-│  (Hermes)   │   OpenAPI / MCP schema     └─────────────────────┘
+│  (Obsidian API Sync)   │   OpenAPI / MCP schema     └─────────────────────┘
 └─────────────┘
 ```
 
@@ -28,7 +28,7 @@
 ## Project Structure
 
 ```
-obsidian-hermes-api/
+obsidian-api-sync/
 ├── server/                    # FastAPI backend
 │   ├── config.py              # Pydantic settings
 │   ├── database.py            # aiosqlite async layer
@@ -82,8 +82,8 @@ If deploying to a Linux VM (e.g. Ubuntu on Azure/AWS/DigitalOcean):
 
 ```bash
 # 1. Clone and install dependencies
-git clone https://github.com/YourUsername/obsidian-hermes-api.git
-cd obsidian-hermes-api/server
+git clone https://github.com/YourUsername/obsidian-api-sync.git
+cd obsidian-api-sync/server
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 uv venv .venv --python 3.12
@@ -100,16 +100,16 @@ sudo nano /etc/systemd/system/ob-api.service
 Paste this into the service file (adjust paths for your username):
 ```ini
 [Unit]
-Description=Hermes Vault Sync API
+Description=Obsidian API Sync API
 After=network.target
 
 [Service]
 User=yourusername
-WorkingDirectory=/home/yourusername/obsidian-hermes-api/server
-ExecStart=/home/yourusername/obsidian-hermes-api/server/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+WorkingDirectory=/home/yourusername/obsidian-api-sync/server
+ExecStart=/home/yourusername/obsidian-api-sync/server/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/yourusername/obsidian-hermes-api/server/.env
+EnvironmentFile=/home/yourusername/obsidian-api-sync/server/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -134,10 +134,10 @@ npm run build   # produces main.js
 
 Copy `main.js` + `manifest.json` into:
 ```
-<your-vault>/.obsidian/plugins/obsidian-hermes-sync/
+<your-vault>/.obsidian/plugins/obsidian-api-sync/
 ```
 
-Enable in **Obsidian → Settings → Community Plugins → Hermes Vault Sync**.
+Enable in **Obsidian → Settings → Community Plugins → Obsidian API Sync**.
 
 Paste the Base64 config string from the Dashboard into **Quick Import** → click Import → Connect.
 
@@ -157,7 +157,7 @@ All `/api/` endpoints require `Authorization: Bearer <token>`.
 
 ## AI Agent Integration
 
-Point your AI agent (Hermes, Claude, GPT, etc.) at `/openapi.json`. Every endpoint carries verbose, action-oriented descriptions designed to be parsed as MCP tool definitions — no additional annotation needed.
+Point your AI agent (Obsidian API Sync, Claude, GPT, etc.) at `/openapi.json`. Every endpoint carries verbose, action-oriented descriptions designed to be parsed as MCP tool definitions — no additional annotation needed.
 
 ```json
 {

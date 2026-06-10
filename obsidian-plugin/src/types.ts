@@ -1,5 +1,5 @@
 // Settings stored in Obsidian's plugin data
-export interface HermesSettings {
+export interface ObsidianApiSyncSettings {
   serverUrl: string;
   apiToken: string;
   syncOnModify: boolean;
@@ -7,7 +7,7 @@ export interface HermesSettings {
   reconnectIntervalMs: number;
 }
 
-export const DEFAULT_SETTINGS: HermesSettings = {
+export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   serverUrl: '',
   apiToken: '',
   syncOnModify: true,
