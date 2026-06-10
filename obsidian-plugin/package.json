@@ -1,7 +1,7 @@
 {
   "name": "obsidian-api-sync",
-  "version": "1.2.0",
-  "description": "Obsidian API Sync Plugin",
+  "version": "1.2.1",
+  "description": "Remote vault sync via FastAPI and WebSockets",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
