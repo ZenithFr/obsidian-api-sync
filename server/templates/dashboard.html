@@ -1,40 +1,64 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Obsidian API Sync{% if view == 'dashboard' %} — Dashboard{% else %} — Login{% endif %}</title>
 
-  <!-- Google Fonts: Space Mono for pure Brutalist aesthetics -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
-
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
-          fontFamily: { sans: ['"Space Mono"', 'monospace'], mono: ['"Space Mono"', 'monospace'] },
+          fontFamily: { 
+            sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+          },
           colors: {
-            black: '#000000',
-            white: '#FFFFFF',
+            primary: '#7c3aed',
+            'primary-60': '#a78bfa',
+            'primary-90': '#ede9fe',
+            secondary: '#eeeeee',
+            tertiary: '#1f1f1f',
+            neutral: '#0f0f0f',
+            surface: '#161616',
+            'surface-2': '#1f1f1f',
+            'on-surface': '#eeeeee',
+            muted: '#b8b8b8',
+            border: '#404040',
+            'border-soft': '#e5e5e5',
+            success: '#22c55e',
+            error: '#ef4444',
           },
-          boxShadow: {
-            'brutal': '8px 8px 0px 0px rgba(0,0,0,1)',
-            'brutal-sm': '4px 4px 0px 0px rgba(0,0,0,1)',
-            'brutal-hover': '0px 0px 0px 0px rgba(0,0,0,1)',
+          borderRadius: {
+            none: '0px',
+            sm: '4px',
+            md: '8px',
+            lg: '12px',
+            xl: '16px',
+            full: '9999px',
           },
-          animation: {
-            'glitch': 'glitch 1s linear infinite',
+          spacing: {
+            'xs': '6px',
+            'sm': '14px',
+            'md': '24px',
+            'lg': '46px',
+            'xl': '96px',
           },
-          keyframes: {
-            glitch: {
-              '2%, 64%': { transform: 'translate(2px, 0) skew(0deg)' },
-              '4%, 60%': { transform: 'translate(-2px, 0) skew(0deg)' },
-              '62%': { transform: 'translate(0, 0) skew(5deg)' },
-            }
+          fontSize: {
+            'headline-display': ['60px', { lineHeight: '60px', fontWeight: '600', letterSpacing: '-1.2px' }],
+            'headline-lg': ['48px', { lineHeight: '60px', fontWeight: '600', letterSpacing: '-1.2px' }],
+            'headline-md': ['38px', { lineHeight: '46px', fontWeight: '600' }],
+            'headline-sm': ['30px', { lineHeight: '36px', fontWeight: '600' }],
+            'body-xl': ['24px', { lineHeight: '36px', fontWeight: '400' }],
+            'body-lg': ['20px', { lineHeight: '32px', fontWeight: '400' }],
+            'body-md': ['16px', { lineHeight: '24px', fontWeight: '400' }],
+            'body-sm': ['14px', { lineHeight: '20px', fontWeight: '400' }],
+            'label-lg': ['20px', { lineHeight: '24px', fontWeight: '500' }],
+            'label-md': ['16px', { lineHeight: '24px', fontWeight: '500' }],
+            'label-sm': ['14px', { lineHeight: '20px', fontWeight: '500' }],
+            'caption': ['12px', { lineHeight: '16px', fontWeight: '500', letterSpacing: '0.02em' }],
           }
         },
       },
@@ -43,141 +67,101 @@
 
   <style type="text/tailwindcss">
     @layer base {
-      html { transition: filter 0.3s ease, background-color 0.3s ease; }
       body {
-        @apply bg-white text-black font-mono antialiased;
+        @apply bg-neutral text-on-surface font-sans antialiased;
       }
-    }
-    @layer utilities {
-      .theme-inverted {
-        filter: invert(1) hue-rotate(180deg);
-        background-color: black;
+      /* Remove default outline, add custom ring */
+      *:focus-visible {
+        @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-neutral;
       }
     }
     @layer components {
-      .brutal-card {
-        @apply bg-white border-4 border-black p-6 shadow-brutal transition-all;
+      .card {
+        @apply bg-surface-2 text-on-surface rounded-lg p-md border border-border shadow-[inset_0_1px_0_0_rgba(229,229,229,0.05)];
       }
-      .brutal-input {
-        @apply bg-white border-4 border-black text-black px-4 py-3 
-               placeholder-gray-400 focus:outline-none focus:bg-gray-100
-               transition-colors;
+      .input {
+        @apply bg-surface text-on-surface rounded-md px-[16px] border border-border 
+               h-[48px] text-body-md placeholder-muted focus:border-primary transition-colors;
       }
       .btn-primary {
-        @apply bg-black text-white font-bold px-6 py-3 border-4 border-black
-               shadow-brutal-sm uppercase tracking-widest
-               hover:bg-white hover:text-black hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1
-               active:bg-gray-200
-               transition-all focus:outline-none;
+        @apply bg-primary text-secondary text-label-lg rounded-md px-[32px] h-[60px] inline-flex items-center justify-center
+               hover:bg-primary-60 transition-colors shadow-sm;
       }
       .btn-secondary {
-        @apply bg-white text-black font-bold px-4 py-2 border-4 border-black
-               shadow-brutal-sm uppercase text-sm
-               hover:bg-black hover:text-white hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1
-               transition-all focus:outline-none;
+        @apply bg-transparent text-on-surface text-label-lg rounded-sm px-[32px] h-[60px] inline-flex items-center justify-center
+               border border-border hover:bg-surface transition-colors;
+      }
+      .btn-link {
+        @apply bg-transparent text-primary-60 text-label-lg rounded-none p-0 inline-flex items-center justify-center
+               hover:text-primary-90 transition-colors;
       }
       .btn-danger {
-        @apply bg-black text-white hover:bg-white hover:text-black font-bold px-4 py-2 border-4 border-black text-sm uppercase
-               transition-all shadow-brutal-sm hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1 focus:outline-none;
+        @apply bg-transparent text-error text-label-md rounded-sm px-[16px] h-[40px] inline-flex items-center justify-center
+               border border-border hover:bg-surface hover:text-red-400 transition-colors;
       }
+      .chip {
+        @apply bg-[#2b2148] text-primary-90 text-caption rounded-full px-[10px] py-[6px] inline-flex items-center justify-center;
+      }
+      
       .tab-btn {
-        @apply px-6 py-3 border-4 border-black bg-white text-black font-bold uppercase transition-all shadow-brutal-sm
-               hover:bg-black hover:text-white hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1;
+        @apply text-label-md text-muted pb-xs border-b-2 border-transparent transition-colors hover:text-on-surface;
       }
       .tab-btn.active {
-        @apply bg-black text-white shadow-brutal-hover translate-x-1 translate-y-1;
+        @apply text-primary-60 border-primary-60;
       }
+      
       .data-table th {
-        @apply text-left font-bold text-black uppercase tracking-wider py-4 px-4 border-b-4 border-black;
+        @apply text-left text-label-sm text-muted py-sm px-sm border-b border-border;
       }
       .data-table td {
-        @apply py-4 px-4 font-medium border-b-4 border-black;
+        @apply py-sm px-sm text-body-sm border-b border-border/50;
       }
-      .data-table tbody tr { @apply hover:bg-gray-100 transition-colors; }
-      .mono { @apply font-mono; }
+      .data-table tbody tr {
+        @apply hover:bg-surface transition-colors;
+      }
     }
   </style>
 </head>
-<body class="min-h-screen relative overflow-x-hidden transition-colors">
-
-<!-- ── Theme Toggle Button ────────────────────────────────────── -->
-<button onclick="toggleTheme()" class="fixed top-6 right-6 z-[100] bg-white text-black border-4 border-black font-black uppercase px-4 py-2 shadow-brutal hover:bg-black hover:text-white hover:shadow-brutal-hover hover:translate-x-1 hover:translate-y-1 transition-all">
-  <span id="theme-icon">☾</span> INVERT
-</button>
-
-<!-- ═══════════════════════════════════════════════════════════════
-     BACKGROUND COLLAGE (ALWAYS PRESENT)
-     ═══════════════════════════════════════════════════════════════ -->
-<div class="fixed inset-0 z-[-1] overflow-hidden bg-white pointer-events-none">
-  <!-- Glitch background -->
-  <img src="/static/assets/glitch.png" class="absolute inset-0 w-full h-full object-cover mix-blend-multiply opacity-30" alt="" />
-  
-  <!-- Geometric Star -->
-  <img src="/static/assets/star.png" class="absolute bottom-20 left-10 w-96 mix-blend-multiply opacity-50 animate-[spin_40s_linear_infinite]" alt="" />
-  
-  <!-- Dove -->
-  <img src="/static/assets/dove.png" class="absolute top-10 left-10 w-64 mix-blend-multiply opacity-80" alt="" />
-  
-  <!-- Viscous Hand -->
-  <img src="/static/assets/hand.png" class="absolute -bottom-10 -right-10 w-1/3 min-w-[300px] max-w-[500px] mix-blend-multiply opacity-100" style="transform: rotate(-10deg)" alt="" />
-  
-  <!-- Text Snippets (Distressed/Integrated) -->
-  <div class="absolute top-1/4 right-8 w-64 text-sm font-mono font-bold uppercase leading-none transform rotate-90 origin-bottom-right mix-blend-difference text-white opacity-90">
-    All is well and the end is still well, though prayer you're still alive...
-  </div>
-  
-  <div class="absolute bottom-32 right-1/4 w-80 text-xl font-black uppercase text-black bg-white border-8 border-black p-4 transform -rotate-6 shadow-brutal">
-    No matter what you do, I will eventually become myself. I will endure it. I will have money, I will be free.
-  </div>
-</div>
-
-<!-- Marquee -->
-<div class="fixed bottom-0 left-0 w-full bg-black text-white py-2 z-50 overflow-hidden whitespace-nowrap border-t-8 border-white">
-  <marquee class="font-mono text-sm uppercase font-bold tracking-widest">
-    You finally have no reason to be valuable congratulations &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    You finally have no reason to be valuable congratulations &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    You finally have no reason to be valuable congratulations &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-    You finally have no reason to be valuable congratulations
-  </marquee>
-</div>
+<body class="min-h-screen relative overflow-x-hidden selection:bg-primary/30 selection:text-white">
 
 {% if view == 'login' %}
 <!-- ═══════════════════════════════════════════════════════════════
      LOGIN SCREEN
      ═══════════════════════════════════════════════════════════════ -->
-<div class="min-h-screen flex items-center justify-center px-4 py-16 relative z-10 pb-16">
+<div class="min-h-screen flex items-center justify-center px-md relative z-10">
   <div class="w-full max-w-md">
 
     <!-- Title -->
-    <div class="text-center mb-8 bg-white border-4 border-black py-4 shadow-brutal transform -rotate-2 hover:rotate-0 transition-transform">
-      <h1 class="text-4xl font-black text-black tracking-tighter uppercase">Obsidian</h1>
-      <h2 class="text-xl font-bold text-black uppercase tracking-widest bg-black text-white inline-block px-2 mt-1">API Sync</h2>
+    <div class="text-center mb-lg">
+      <h1 class="text-headline-display text-on-surface">Obsidian</h1>
+      <h2 class="text-headline-sm text-primary-60 mt-xs">API Sync</h2>
     </div>
 
     <!-- Login Card -->
-    <div class="brutal-card bg-white">
-      <form method="POST" action="/dashboard/login" class="space-y-6">
+    <div class="card">
+      <form method="POST" action="/dashboard/login" class="space-y-md">
 
         {% if error %}
-        <div class="bg-black text-white border-4 border-black p-4 font-bold uppercase text-sm animate-glitch">
-          !! ERROR: {{ error }} !!
+        <div class="bg-error/10 text-error border border-error/20 p-sm rounded-sm text-label-sm flex items-center gap-2">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+          <span>{{ error }}</span>
         </div>
         {% endif %}
 
-        <div class="space-y-2">
-          <label class="block text-sm font-bold text-black uppercase tracking-wider">Admin Password</label>
+        <div class="space-y-xs">
+          <label class="block text-label-sm text-muted">Admin Password</label>
           <input
             type="password"
             name="password"
             autofocus
             autocomplete="current-password"
-            placeholder="[ ENTER PASSWORD ]"
-            class="brutal-input w-full text-lg font-bold"
+            placeholder="Enter your password"
+            class="input w-full"
           />
         </div>
 
-        <button type="submit" class="btn-primary w-full text-lg py-4">
-          UNLOCK
+        <button type="submit" class="btn-primary w-full">
+          Sign In
         </button>
       </form>
     </div>
@@ -191,29 +175,31 @@
      ═══════════════════════════════════════════════════════════════ -->
 
 <!-- ── Top Navbar ─────────────────────────────────────────────── -->
-<nav class="sticky top-0 z-40 border-b-8 border-black bg-white">
-  <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+<nav class="sticky top-0 z-40 bg-neutral/80 backdrop-blur-md border-b border-border">
+  <div class="max-w-7xl mx-auto px-lg h-20 flex items-center justify-between">
 
     <!-- Logo -->
-    <div class="flex items-center gap-4">
-      <div class="w-12 h-12 bg-black text-white flex items-center justify-center font-black text-2xl border-4 border-black">
+    <div class="flex items-center gap-sm">
+      <div class="w-10 h-10 bg-primary text-secondary rounded-md flex items-center justify-center font-bold text-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.2)]">
         O
       </div>
       <div>
-        <span class="font-black text-black text-xl leading-none block uppercase tracking-tighter">Obsidian</span>
-        <span class="font-bold bg-black text-white text-xs px-1 uppercase tracking-widest mt-1 inline-block">API Sync</span>
+        <span class="text-headline-sm leading-none block">Obsidian</span>
       </div>
     </div>
 
     <!-- Status + Logout -->
-    <div class="flex items-center gap-6">
-      <div class="flex items-center gap-2 border-4 border-black px-3 py-1 font-bold text-sm bg-white uppercase shadow-brutal-sm">
-        <span class="w-3 h-3 bg-black animate-pulse"></span>
-        <span>Online</span>
+    <div class="flex items-center gap-md">
+      <div class="flex items-center gap-xs">
+        <span class="relative flex h-3 w-3">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-60 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+        </span>
+        <span class="text-label-sm text-muted">System Active</span>
       </div>
       <form method="POST" action="/dashboard/logout">
-        <button type="submit" class="btn-secondary">
-          LOGOUT
+        <button type="submit" class="text-label-sm text-muted hover:text-on-surface transition-colors">
+          Sign out
         </button>
       </form>
     </div>
@@ -221,137 +207,143 @@
 </nav>
 
 <!-- ── Tab Bar ────────────────────────────────────────────────── -->
-<div class="max-w-7xl mx-auto px-6 pt-10 relative z-10">
-  <div class="flex flex-wrap gap-4">
-    <button onclick="switchTab('vault')"   id="tab-vault"   class="tab-btn active">VAULT</button>
-    <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">TOKENS</button>
-    <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">CONNECT</button>
-    <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">AUDIT LOG</button>
+<div class="max-w-7xl mx-auto px-lg pt-lg relative z-10 border-b border-border mb-lg">
+  <div class="flex gap-lg">
+    <button onclick="switchTab('vault')"   id="tab-vault"   class="tab-btn active">Vault Directory</button>
+    <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">Access Tokens</button>
+    <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">Client Connection</button>
+    <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">Audit Log</button>
   </div>
 </div>
 
 <!-- ── Tab Panels ─────────────────────────────────────────────── -->
-<main class="max-w-7xl mx-auto px-6 py-10 space-y-10 relative z-10 pb-24">
+<main class="max-w-7xl mx-auto px-lg pb-xl relative z-10 space-y-lg">
 
   <!-- ════════════════ TAB: VAULT ════════════════ -->
-  <div id="panel-vault" class="tab-panel space-y-8">
+  <div id="panel-vault" class="tab-panel space-y-lg">
 
-    <div class="brutal-card">
-      <div class="flex items-start justify-between gap-4 mb-6">
+    <div class="card flex flex-col gap-md">
+      <div class="flex items-start justify-between">
         <div>
-          <h2 class="text-2xl font-black uppercase text-black bg-white inline-block">Vault Directory</h2>
-          <p class="font-bold text-sm uppercase mt-2">The root folder for markdown notes.</p>
+          <h2 class="text-headline-md">Vault Configuration</h2>
+          <p class="text-body-md text-muted mt-xs">The absolute path to your markdown note collection.</p>
         </div>
-        <div id="file-count-badge" class="bg-black text-white border-4 border-black px-6 py-4 text-center hidden transform rotate-3">
-          <div class="text-4xl font-black" id="file-count-num">—</div>
-          <div class="text-xs font-bold uppercase tracking-widest mt-1">Files</div>
+        <div id="file-count-badge" class="hidden text-right">
+          <div class="text-headline-lg text-primary-60 leading-none" id="file-count-num">—</div>
+          <div class="text-label-sm text-muted mt-1">Indexed Files</div>
         </div>
       </div>
 
       <!-- Current path display -->
-      <div class="border-4 border-black bg-gray-100 p-4 mb-6 relative">
-        <div class="absolute -top-3 left-4 bg-white px-2 font-bold text-xs uppercase border-x-4 border-black">Current Path</div>
-        <div class="text-lg font-bold break-all mt-2" id="current-vault-path">{{ vault_path }}</div>
+      <div class="bg-surface rounded-md p-sm border border-border">
+        <div class="text-label-sm text-muted mb-1">Current Directory Path</div>
+        <div class="text-body-lg font-mono break-all text-primary-90" id="current-vault-path">{{ vault_path }}</div>
       </div>
 
       <!-- Update path form -->
-      <div class="flex flex-col sm:flex-row gap-4">
-        <input
-          id="vault-path-input"
-          type="text"
-          placeholder="/ABS/PATH/TO/VAULT"
-          class="brutal-input flex-1"
-        />
-        <button onclick="updateVaultPath()" class="btn-primary sm:w-auto w-full">
-          UPDATE PATH
+      <div class="flex flex-col sm:flex-row gap-sm items-end">
+        <div class="flex-1 w-full space-y-xs">
+          <label class="block text-label-sm text-muted">Update Path</label>
+          <input
+            id="vault-path-input"
+            type="text"
+            placeholder="/absolute/path/to/vault"
+            class="input w-full font-mono text-body-sm"
+          />
+        </div>
+        <button onclick="updateVaultPath()" class="btn-secondary sm:w-auto w-full">
+          Save Changes
         </button>
       </div>
     </div>
 
     <!-- Vault Stats -->
-    <div class="brutal-card">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-2xl font-black uppercase bg-black text-white px-2">Vault Stats</h2>
-        <button onclick="loadVaultStats()" class="btn-secondary">
-          REFRESH
+    <div class="card flex flex-col gap-md">
+      <div class="flex items-center justify-between">
+        <h2 class="text-headline-sm">Vault Statistics</h2>
+        <button onclick="loadVaultStats()" class="btn-link">
+          Refresh Data
         </button>
       </div>
-      <div id="vault-stats-content" class="font-bold text-sm uppercase">
-        <p>Click Refresh to load. Requires an active token.</p>
+      <div id="vault-stats-content" class="text-body-md text-muted">
+        <p>Click Refresh Data to analyze the vault. An active token is required.</p>
       </div>
     </div>
   </div>
 
   <!-- ════════════════ TAB: TOKENS ════════════════ -->
-  <div id="panel-tokens" class="tab-panel space-y-8 hidden">
+  <div id="panel-tokens" class="tab-panel space-y-lg hidden">
 
     <!-- Generate Token -->
-    <div class="brutal-card">
-      <h2 class="text-2xl font-black uppercase mb-2">Generate Token</h2>
-      <p class="font-bold text-sm uppercase mb-6 bg-black text-white inline-block px-2">Authentication Key Creation</p>
+    <div class="card flex flex-col gap-md">
+      <div>
+        <h2 class="text-headline-md">Issue Access Token</h2>
+        <p class="text-body-md text-muted mt-xs">Create a new Bearer token for a client or AI agent.</p>
+      </div>
 
-      <div class="flex flex-col sm:flex-row gap-4 mb-6">
+      <div class="flex flex-col sm:flex-row gap-sm">
         <input
           id="token-label-input"
           type="text"
-          placeholder="LABEL (E.G. DEVICE-NAME)"
-          class="brutal-input flex-1"
+          placeholder="Token Label (e.g. 'MacBook Pro' or 'Hermes AI')"
+          class="input flex-1"
         />
         <button onclick="generateToken()" class="btn-primary">
-          GENERATE
+          Generate Token
         </button>
       </div>
 
       <!-- New token reveal box -->
       <div id="new-token-box" class="hidden">
-        <div class="border-4 border-black bg-black text-white p-6 transform -rotate-1">
-          <div class="font-black uppercase mb-4 text-xl tracking-wider animate-glitch">!! TOKEN GENERATED !!</div>
-          <div class="flex flex-col sm:flex-row items-center gap-4 mb-4">
-            <div id="new-token-value"
-                 class="bg-white text-black font-bold p-4 w-full break-all border-4 border-white text-lg">
-            </div>
-            <button onclick="copyNewToken()" id="copy-token-btn" class="bg-white text-black border-4 border-black font-black uppercase px-6 py-4 hover:bg-gray-300 w-full sm:w-auto flex-shrink-0">
-              COPY
+        <div class="bg-surface border border-primary/30 p-md rounded-md mt-sm">
+          <div class="flex items-center gap-2 mb-sm text-primary-60">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            <h3 class="text-label-lg">Token Generated</h3>
+          </div>
+          <div class="flex flex-col sm:flex-row items-center gap-sm">
+            <div id="new-token-value" class="bg-neutral text-on-surface text-body-md font-mono p-sm rounded border border-border w-full break-all"></div>
+            <button onclick="copyNewToken()" id="copy-token-btn" class="btn-secondary shrink-0 w-full sm:w-auto !h-[48px]">
+              Copy to Clipboard
             </button>
           </div>
-          <div class="font-bold uppercase text-sm bg-white text-black inline-block px-2">
-            SAVE THIS NOW. IT WILL NOT BE SHOWN AGAIN.
-          </div>
+          <p class="text-caption text-error mt-sm">
+            Make sure to copy your token now. You won't be able to see it again!
+          </p>
         </div>
       </div>
     </div>
 
     <!-- Token List -->
-    <div class="brutal-card p-0 overflow-hidden">
-      <div class="p-6 border-b-4 border-black flex items-center justify-between bg-white">
-        <h2 class="text-2xl font-black uppercase">Active Tokens</h2>
-        <button onclick="loadTokens()" class="btn-secondary">REFRESH</button>
+    <div class="card !p-0 overflow-hidden flex flex-col">
+      <div class="p-md border-b border-border flex items-center justify-between">
+        <h2 class="text-headline-sm">Active Tokens</h2>
+        <button onclick="loadTokens()" class="btn-link">Refresh List</button>
       </div>
-      <div class="overflow-x-auto bg-white">
+      <div class="overflow-x-auto">
         <table class="w-full data-table">
           <thead>
-            <tr class="bg-gray-100">
+            <tr>
               <th>ID</th>
               <th>Label</th>
-              <th>Token</th>
+              <th>Token Preview</th>
               <th>Created</th>
-              <th>Used</th>
-              <th>Action</th>
+              <th>Last Used</th>
+              <th class="text-right">Action</th>
             </tr>
           </thead>
           <tbody id="tokens-tbody">
             {% for tok in tokens %}
             <tr data-token-id="{{ tok.id }}" data-token-full="{{ tok.token }}">
-              <td class="font-black">#{{ tok.id }}</td>
-              <td><span class="bg-black text-white px-2 py-1 font-bold uppercase text-xs">{{ tok.label }}</span></td>
-              <td class="font-bold">{{ tok.token[:16] }}...</td>
-              <td class="text-sm font-bold">{{ tok.created }}</td>
-              <td class="text-sm font-bold">{{ tok.last_used or 'NEVER' }}</td>
-              <td><button onclick="revokeToken({{ tok.id }}, this)" class="btn-danger">REVOKE</button></td>
+              <td class="text-muted">#{{ tok.id }}</td>
+              <td><span class="chip">{{ tok.label }}</span></td>
+              <td class="font-mono text-muted">{{ tok.token[:16] }}...</td>
+              <td>{{ tok.created }}</td>
+              <td>{{ tok.last_used or 'Never' }}</td>
+              <td class="text-right"><button onclick="revokeToken({{ tok.id }}, this)" class="btn-danger">Revoke</button></td>
             </tr>
             {% else %}
             <tr id="empty-tokens-row">
-              <td colspan="6" class="text-center font-bold uppercase py-8">NO TOKENS FOUND.</td>
+              <td colspan="6" class="text-center text-muted py-lg">No active tokens found.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -361,81 +353,88 @@
   </div>
 
   <!-- ════════════════ TAB: CONNECT ════════════════ -->
-  <div id="panel-connect" class="tab-panel space-y-8 hidden">
+  <div id="panel-connect" class="tab-panel space-y-lg hidden">
 
-    <div class="brutal-card">
-      <h2 class="text-2xl font-black uppercase mb-2">Client Config Export</h2>
-      <p class="font-bold text-sm uppercase mb-8">Generate Base64 for Quick Import in Obsidian.</p>
-
-      <div class="mb-6">
-        <label class="block font-black uppercase mb-2">Select Token</label>
-        <select id="connect-token-select" onchange="updateConnectConfig()" class="brutal-input w-full bg-white cursor-pointer font-bold">
-          <option value="">[ SELECT TOKEN ]</option>
-          {% for tok in tokens %}
-          <option value="{{ tok.token }}" data-label="{{ tok.label }}">#{{ tok.id }} - {{ tok.label }}</option>
-          {% endfor %}
-        </select>
+    <div class="card flex flex-col gap-md">
+      <div>
+        <h2 class="text-headline-md">Client Connection</h2>
+        <p class="text-body-md text-muted mt-xs">Generate a Base64 configuration payload to instantly connect your Obsidian plugin.</p>
       </div>
 
-      <div class="mb-6">
-        <label class="block font-black uppercase mb-2">Or Paste Token</label>
-        <input id="connect-token-manual" type="text" placeholder="PASTE FULL TOKEN..." oninput="updateConnectConfig()" class="brutal-input w-full" />
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-lg mt-sm">
+        <div class="space-y-md">
+          <div class="space-y-xs">
+            <label class="block text-label-sm text-muted">Select an existing token</label>
+            <select id="connect-token-select" onchange="updateConnectConfig()" class="input w-full appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%23b8b8b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]">
+              <option value="">Choose token...</option>
+              {% for tok in tokens %}
+              <option value="{{ tok.token }}" data-label="{{ tok.label }}">#{{ tok.id }} - {{ tok.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="space-y-xs">
+            <label class="block text-label-sm text-muted">Or manually paste token</label>
+            <input id="connect-token-manual" type="text" placeholder="ey..." oninput="updateConnectConfig()" class="input w-full font-mono text-body-sm" />
+          </div>
+
+          <div class="space-y-xs">
+            <label class="block text-label-sm text-muted">Encoded Configuration</label>
+            <textarea id="connect-config-output" readonly rows="3" class="input w-full resize-none h-auto py-sm font-mono text-body-sm bg-neutral" placeholder="Select or paste a token to generate..."></textarea>
+          </div>
+
+          <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary w-full">
+            <span id="copy-config-label">Copy Payload</span>
+          </button>
+        </div>
+
+        <div class="bg-neutral rounded-md p-md border border-border flex flex-col h-full">
+          <h3 class="text-label-lg mb-sm text-primary-60">Quick Setup Instructions</h3>
+          <ol class="space-y-sm text-body-md text-muted list-decimal list-inside flex-1">
+            <li>Install the <strong>Obsidian API Sync</strong> plugin in your vault.</li>
+            <li>Enable the plugin and open its settings.</li>
+            <li>Click the <span class="text-on-surface font-medium">Quick Import</span> button.</li>
+            <li>Paste the copied payload and confirm.</li>
+          </ol>
+          
+          <div class="mt-md pt-md border-t border-border">
+            <h4 class="text-label-sm text-muted mb-xs">JSON Preview</h4>
+            <pre id="connect-json-preview" class="text-caption font-mono text-primary-90 overflow-x-auto">{"server": "...", "token": "..."}</pre>
+          </div>
+        </div>
       </div>
-
-      <div class="mb-6">
-        <label class="block font-black uppercase mb-2">Config Blob</label>
-        <textarea id="connect-config-output" readonly rows="4" class="brutal-input w-full resize-none bg-gray-100 font-bold" placeholder="BLOB WILL APPEAR HERE"></textarea>
-      </div>
-
-      <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary">
-        <span id="copy-config-label">COPY BLOB</span>
-      </button>
-
-      <div class="mt-8 border-4 border-black p-6 bg-black text-white">
-        <div class="font-black uppercase text-xl mb-4 bg-white text-black inline-block px-2">IMPORT INSTRUCTIONS</div>
-        <ol class="font-bold uppercase text-sm space-y-2 list-decimal list-inside">
-          <li>Open Obsidian settings > Obsidian API Sync</li>
-          <li>Click <span class="bg-white text-black px-1">QUICK IMPORT</span></li>
-          <li>Paste the BLOB and click IMPORT</li>
-        </ol>
-      </div>
-    </div>
-
-    <div class="brutal-card">
-      <h2 class="text-xl font-black uppercase mb-4">Raw JSON Preview</h2>
-      <pre id="connect-json-preview" class="bg-gray-100 border-4 border-black p-4 font-bold text-sm overflow-x-auto whitespace-pre-wrap">SELECT TOKEN TO PREVIEW</pre>
     </div>
   </div>
 
   <!-- ════════════════ TAB: AUDIT LOG ════════════════ -->
-  <div id="panel-audit" class="tab-panel space-y-8 hidden">
-    <div class="brutal-card p-0 overflow-hidden">
-      <div class="px-6 py-4 border-b-4 border-black flex items-center justify-between flex-wrap gap-4 bg-white">
+  <div id="panel-audit" class="tab-panel space-y-lg hidden">
+    <div class="card !p-0 overflow-hidden flex flex-col">
+      <div class="p-md border-b border-border flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h2 class="text-2xl font-black uppercase">Audit Log</h2>
-          <p class="font-bold text-sm uppercase">10S Auto-refresh</p>
+          <h2 class="text-headline-sm">Event Stream</h2>
+          <p class="text-body-sm text-muted mt-xs">Real-time audit log of all API and WebSocket activity.</p>
         </div>
-        <div class="flex items-center gap-4">
-          <span id="audit-last-refresh" class="font-bold text-xs uppercase bg-black text-white px-2 py-1"></span>
-          <button onclick="clearAuditView()" class="btn-secondary">CLEAR</button>
-          <button onclick="toggleAuditRefresh()" id="audit-pause-btn" class="btn-secondary">
-            <span id="audit-pause-label">PAUSE</span>
+        <div class="flex items-center gap-md">
+          <span id="audit-last-refresh" class="text-caption text-muted"></span>
+          <button onclick="clearAuditView()" class="btn-link">Clear Log</button>
+          <button onclick="toggleAuditRefresh()" id="audit-pause-btn" class="btn-secondary !h-[40px] !px-4 !text-label-md">
+            <span id="audit-pause-label">Pause Stream</span>
           </button>
         </div>
       </div>
-      <div class="overflow-x-auto bg-white">
+      <div class="overflow-x-auto">
         <table class="w-full data-table">
           <thead>
-            <tr class="bg-gray-100">
+            <tr>
               <th>Timestamp</th>
               <th>Method</th>
-              <th>Path</th>
-              <th>Token</th>
+              <th>Resource</th>
+              <th>Identity</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="audit-tbody">
-            <tr><td colspan="5" class="text-center font-bold uppercase py-8">LOADING LOGS...</td></tr>
+            <tr><td colspan="5" class="text-center text-muted py-lg">Initializing event stream...</td></tr>
           </tbody>
         </table>
       </div>
@@ -445,47 +444,42 @@
 </main>
 
 <!-- ── Toast Container ──────────────────────────────────────────── -->
-<div id="toast-container" class="fixed bottom-12 right-6 z-[100] space-y-4 pointer-events-none"></div>
+<div id="toast-container" class="fixed bottom-lg right-lg z-[100] space-y-sm pointer-events-none flex flex-col items-end"></div>
 
 {% endif %}
 
 <!-- ═══════════════════════════════════════════════════════════════
-     JAVASCRIPT (Preserved Logic, Updated UI renders)
+     JAVASCRIPT LOGIC
      ═══════════════════════════════════════════════════════════════ -->
 <script>
-// ── Theme Management ─────────────────────────────────────────────
-function toggleTheme() {
-  const root = document.documentElement;
-  root.classList.toggle('theme-inverted');
-  const isDark = root.classList.contains('theme-inverted');
-  localStorage.setItem('obsidian-sync-theme', isDark ? 'dark' : 'light');
-  document.getElementById('theme-icon').textContent = isDark ? '☼' : '☾';
-}
-
-if (localStorage.getItem('obsidian-sync-theme') === 'dark') {
-  document.documentElement.classList.add('theme-inverted');
-  document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('theme-icon').textContent = '☼';
-  });
-}
+// Remove the brutalist theme toggler completely. The system is dark by default.
+localStorage.removeItem('obsidian-sync-theme');
+localStorage.removeItem('hermes-theme');
 
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
-  const bg = type === 'error' ? 'bg-black text-white border-white' : 'bg-white text-black border-black';
-  const prefix = type === 'error' ? '[ERROR]' : type === 'success' ? '[OK]' : '[INFO]';
+  const bg = type === 'error' ? 'bg-error/10 border-error/20 text-error' : 'bg-surface-2 border-border text-on-surface';
+  const icon = type === 'error' 
+    ? '<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
+    : '<svg class="w-5 h-5 shrink-0 text-primary-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
 
   const el = document.createElement('div');
-  el.className = `pointer-events-auto border-4 p-4 shadow-brutal font-bold uppercase text-sm ${bg} transform -rotate-1 animate-slide-up transition-all`;
-  el.innerHTML = `${prefix} ${message}`;
+  el.className = `pointer-events-auto border rounded-md p-sm shadow-lg flex items-center gap-sm text-body-sm transition-all duration-300 transform translate-y-4 opacity-0 ${bg}`;
+  el.innerHTML = `${icon} <span>${escapeHtml(message)}</span>`;
   container.appendChild(el);
 
+  // Animate in
+  requestAnimationFrame(() => {
+    el.classList.remove('translate-y-4', 'opacity-0');
+  });
+
+  // Animate out
   setTimeout(() => {
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(20px)';
+    el.classList.add('opacity-0', 'scale-95');
     setTimeout(() => el.remove(), 300);
-  }, 3000);
+  }, 4000);
 }
 
 const TAB_IDS = ['vault', 'tokens', 'connect', 'audit'];
@@ -502,16 +496,16 @@ function switchTab(name) {
 async function updateVaultPath() {
   const input = document.getElementById('vault-path-input');
   const path = input.value.trim();
-  if (!path) { showToast('Enter path.', 'error'); return; }
+  if (!path) { showToast('Please enter a directory path.', 'error'); return; }
   try {
     const res = await fetch('/dashboard/vault-path', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Failed');
+    if (!res.ok) throw new Error(data.detail || 'Failed to update path');
     document.getElementById('current-vault-path').textContent = data.vault_path;
     input.value = '';
-    showToast('Vault path updated.', 'success');
+    showToast('Vault directory path updated successfully.');
   } catch (err) { showToast(err.message, 'error'); }
 }
 
@@ -519,12 +513,12 @@ async function loadVaultStats() {
   const statsDiv = document.getElementById('vault-stats-content');
   const firstTokenRow = document.querySelector('#tokens-tbody tr[data-token-full]');
   const token = firstTokenRow ? firstTokenRow.dataset.tokenFull : null;
-  if (!token) { statsDiv.innerHTML = '<p class="bg-black text-white p-2 inline-block">NO TOKENS FOUND.</p>'; return; }
+  if (!token) { statsDiv.innerHTML = '<p class="text-error">Cannot fetch stats: No active tokens found.</p>'; return; }
   
   try {
-    statsDiv.innerHTML = '<p class="animate-pulse">LOADING...</p>';
+    statsDiv.innerHTML = '<p class="animate-pulse">Analyzing vault contents...</p>';
     const res = await fetch('/api/files', { headers: { 'Authorization': `Bearer ${token}` } });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     const data = await res.json();
 
     const badge = document.getElementById('file-count-badge');
@@ -532,51 +526,51 @@ async function loadVaultStats() {
     badge.classList.remove('hidden');
 
     statsDiv.innerHTML = `
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div class="border-4 border-black p-4 bg-gray-100">
-          <div class="text-4xl font-black">${data.count}</div>
-          <div class="mt-2 font-bold uppercase text-xs bg-black text-white inline-block px-1">MD FILES</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-md">
+        <div class="bg-neutral p-md rounded-md border border-border">
+          <div class="text-headline-md text-primary-90">${data.count}</div>
+          <div class="text-label-sm text-muted mt-1">Markdown Files Found</div>
         </div>
-        <div class="border-4 border-black p-4 bg-gray-100">
-          <div class="font-bold text-sm break-all">${data.vault_path}</div>
-          <div class="mt-2 font-bold uppercase text-xs bg-black text-white inline-block px-1">ROOT</div>
+        <div class="bg-neutral p-md rounded-md border border-border flex flex-col justify-center">
+          <div class="text-body-sm font-mono break-all text-on-surface">${data.vault_path}</div>
+          <div class="text-caption text-muted mt-2">Active Root Directory</div>
         </div>
       </div>
       ${data.count > 0 ? `
-      <div class="mt-6 border-t-4 border-black pt-4">
-        <div class="font-black text-lg mb-4">RECENT 10</div>
-        <div class="space-y-2">
-          ${data.files.slice(0, 10).map(f => `<div class="bg-black text-white px-2 py-1 text-xs break-all">${f}</div>`).join('')}
+      <div class="mt-md pt-md border-t border-border">
+        <h3 class="text-label-lg mb-sm">Sample Files</h3>
+        <div class="flex flex-wrap gap-xs">
+          ${data.files.slice(0, 15).map(f => `<span class="bg-neutral border border-border text-muted text-caption px-2 py-1 rounded">${escapeHtml(f)}</span>`).join('')}
         </div>
       </div>` : ''}
     `;
-  } catch (err) { statsDiv.innerHTML = `<p class="bg-black text-white p-2 inline-block">ERROR: ${err.message}</p>`; }
+  } catch (err) { statsDiv.innerHTML = `<p class="text-error">Analysis failed: ${err.message}</p>`; }
 }
 
 async function loadTokens() {
   try {
     const res = await fetch('/dashboard/tokens');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     const data = await res.json();
     renderTokenTable(data.tokens);
     updateConnectTokenSelect(data.tokens);
-  } catch (err) { console.warn(err); }
+  } catch (err) { console.warn('Token fetch error:', err); }
 }
 
 function renderTokenTable(tokens) {
   const tbody = document.getElementById('tokens-tbody');
   if (tokens.length === 0) {
-    tbody.innerHTML = '<tr id="empty-tokens-row"><td colspan="6" class="text-center font-bold uppercase py-8">NO TOKENS.</td></tr>';
+    tbody.innerHTML = '<tr id="empty-tokens-row"><td colspan="6" class="text-center text-muted py-lg">No active tokens found.</td></tr>';
     return;
   }
   tbody.innerHTML = tokens.map(tok => `
     <tr data-token-id="${tok.id}" data-token-full="${tok.token}">
-      <td class="font-black">#${tok.id}</td>
-      <td><span class="bg-black text-white px-2 py-1 font-bold uppercase text-xs">${escapeHtml(tok.label)}</span></td>
-      <td class="font-bold">${tok.token.slice(0, 16)}...</td>
-      <td class="text-sm font-bold">${tok.created}</td>
-      <td class="text-sm font-bold">${tok.last_used || 'NEVER'}</td>
-      <td><button onclick="revokeToken(${tok.id}, this)" class="btn-danger">REVOKE</button></td>
+      <td class="text-muted">#${tok.id}</td>
+      <td><span class="chip">${escapeHtml(tok.label)}</span></td>
+      <td class="font-mono text-muted text-body-sm">${tok.token.slice(0, 16)}...</td>
+      <td class="text-muted text-body-sm">${tok.created}</td>
+      <td class="text-muted text-body-sm">${tok.last_used || 'Never'}</td>
+      <td class="text-right"><button onclick="revokeToken(${tok.id}, this)" class="btn-danger">Revoke</button></td>
     </tr>
   `).join('');
 }
@@ -585,7 +579,7 @@ function updateConnectTokenSelect(tokens) {
   const sel = document.getElementById('connect-token-select');
   if (!sel) return;
   const current = sel.value;
-  sel.innerHTML = '<option value="">[ SELECT TOKEN ]</option>' +
+  sel.innerHTML = '<option value="">Choose token...</option>' +
     tokens.map(t => `<option value="${t.token}" ${t.token === current ? 'selected' : ''}>#${t.id} - ${escapeHtml(t.label)}</option>`).join('');
 }
 
@@ -597,21 +591,21 @@ async function generateToken() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail);
+    if (!res.ok) throw new Error(data.detail || 'Token generation failed');
     document.getElementById('new-token-value').textContent = data.token;
     document.getElementById('new-token-box').classList.remove('hidden');
     input.value = '';
     await loadTokens();
-    showToast('TOKEN CREATED', 'success');
+    showToast('New token successfully generated.');
   } catch (err) { showToast(err.message, 'error'); }
 }
 
 async function revokeToken(id) {
-  if (!confirm(`REVOKE #${id}?`)) return;
+  if (!confirm(`Are you sure you want to revoke Token #${id}? Any clients using it will instantly lose access.`)) return;
   try {
     await fetch(`/dashboard/tokens/${id}`, { method: 'DELETE' });
     document.querySelector(`tr[data-token-id="${id}"]`)?.remove();
-    showToast('TOKEN REVOKED', 'success');
+    showToast('Token revoked successfully.');
     await loadTokens();
   } catch (err) { showToast(err.message, 'error'); }
 }
@@ -620,8 +614,12 @@ function copyNewToken() {
   const val = document.getElementById('new-token-value').textContent;
   navigator.clipboard.writeText(val).then(() => {
     const btn = document.getElementById('copy-token-btn');
-    btn.textContent = 'COPIED!';
-    setTimeout(() => btn.textContent = 'COPY', 2000);
+    btn.textContent = 'Copied!';
+    btn.classList.add('bg-success/20', 'text-success', 'border-success/30');
+    setTimeout(() => {
+      btn.textContent = 'Copy to Clipboard';
+      btn.classList.remove('bg-success/20', 'text-success', 'border-success/30');
+    }, 2000);
   });
 }
 
@@ -631,7 +629,11 @@ function updateConnectConfig() {
   const out = document.getElementById('connect-config-output');
   const prev = document.getElementById('connect-json-preview');
   const token = sel.value || man.value.trim();
-  if (!token) { out.value = ''; prev.textContent = 'SELECT TOKEN TO PREVIEW'; return; }
+  if (!token) { 
+    out.value = ''; 
+    prev.textContent = '{"server": "...", "token": "..."}'; 
+    return; 
+  }
   const config = { server: window.location.origin, token };
   out.value = btoa(JSON.stringify(config));
   prev.textContent = JSON.stringify(config, null, 2);
@@ -639,11 +641,12 @@ function updateConnectConfig() {
 
 function copyConnectConfig() {
   const out = document.getElementById('connect-config-output');
-  if (!out.value) return;
+  if (!out.value) { showToast('Generate a payload first by selecting a token.', 'error'); return; }
   navigator.clipboard.writeText(out.value).then(() => {
-    const btn = document.getElementById('copy-config-label');
-    btn.textContent = 'COPIED!';
-    setTimeout(() => btn.textContent = 'COPY BLOB', 2000);
+    const btn = document.getElementById('copy-config-btn');
+    const label = document.getElementById('copy-config-label');
+    label.textContent = 'Copied!';
+    setTimeout(() => label.textContent = 'Copy Payload', 2000);
   });
 }
 
@@ -651,8 +654,13 @@ let auditRefreshInterval = null;
 let auditPaused = false;
 
 function methodStyle(m) {
-  const styles = { GET: 'bg-black text-white', POST: 'bg-white text-black border-2 border-black', DELETE: 'bg-red-600 text-white', WS: 'bg-gray-400 text-black border-2 border-black' };
-  return styles[m] || 'bg-gray-200 text-black border-2 border-black';
+  const styles = { 
+    GET: 'text-primary-60 bg-primary/10 border border-primary/20', 
+    POST: 'text-success bg-success/10 border border-success/20', 
+    DELETE: 'text-error bg-error/10 border border-error/20', 
+    WS: 'text-on-surface bg-border border border-border' 
+  };
+  return styles[m] || 'text-muted bg-surface border border-border';
 }
 
 async function loadAuditLog() {
@@ -662,41 +670,50 @@ async function loadAuditLog() {
     const data = await res.json();
     const tbody = document.getElementById('audit-tbody');
     if (!data.entries.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center font-bold uppercase py-8">EMPTY LOG</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-lg">No events recorded yet.</td></tr>';
       return;
     }
     tbody.innerHTML = data.entries.map(e => `
       <tr>
-        <td class="font-bold text-xs">${e.ts}</td>
-        <td><span class="font-black px-2 py-1 text-xs ${methodStyle(e.method)}">${escapeHtml(e.method)}</span></td>
-        <td class="font-bold text-xs max-w-xs truncate">${e.path ? escapeHtml(e.path) : '—'}</td>
-        <td class="font-bold">${e.token_id != null ? `#${e.token_id}` : '—'}</td>
-        <td><span class="font-bold text-xs bg-gray-200 border-2 border-black px-2 py-1">${escapeHtml(e.action)}</span></td>
+        <td class="text-muted font-mono text-caption">${e.ts}</td>
+        <td><span class="inline-flex items-center justify-center rounded px-2 py-0.5 text-caption font-medium ${methodStyle(e.method)}">${escapeHtml(e.method)}</span></td>
+        <td class="text-on-surface text-body-sm font-mono max-w-xs truncate" title="${e.path ? escapeHtml(e.path) : ''}">${e.path ? escapeHtml(e.path) : '—'}</td>
+        <td class="text-muted text-body-sm">${e.token_id != null ? `Token #${e.token_id}` : 'System'}</td>
+        <td class="text-muted text-body-sm">${escapeHtml(e.action)}</td>
       </tr>
     `).join('');
-    document.getElementById('audit-last-refresh').textContent = 'SYNC: ' + new Date().toLocaleTimeString();
-  } catch (err) {}
+    
+    const now = new Date();
+    document.getElementById('audit-last-refresh').textContent = `Last synced: ${now.toLocaleTimeString()}`;
+  } catch (err) {
+    // Silent fail for background refresh
+  }
 }
 
 function clearAuditView() {
-  document.getElementById('audit-tbody').innerHTML = '<tr><td colspan="5" class="text-center font-bold uppercase py-8">CLEARED</td></tr>';
+  document.getElementById('audit-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-lg">Log cleared from view.</td></tr>';
 }
 
 function toggleAuditRefresh() {
   auditPaused = !auditPaused;
   const label = document.getElementById('audit-pause-label');
+  const btn = document.getElementById('audit-pause-btn');
+  
   if (auditPaused) {
     clearInterval(auditRefreshInterval);
-    label.textContent = 'RESUME';
+    label.textContent = 'Resume Stream';
+    btn.classList.add('border-primary-60', 'text-primary-60');
   } else {
     startAuditRefresh();
-    label.textContent = 'PAUSE';
+    label.textContent = 'Pause Stream';
+    btn.classList.remove('border-primary-60', 'text-primary-60');
   }
 }
 
 function startAuditRefresh() {
   if (auditRefreshInterval) clearInterval(auditRefreshInterval);
-  auditRefreshInterval = setInterval(loadAuditLog, 10000);
+  loadAuditLog(); // Initial load
+  auditRefreshInterval = setInterval(loadAuditLog, 5000); // Poll every 5s instead of 10s for snappier feel
 }
 
 function escapeHtml(str) {
@@ -705,7 +722,9 @@ function escapeHtml(str) {
 }
 
 {% if view == 'dashboard' %}
-(function init() { startAuditRefresh(); })();
+document.addEventListener('DOMContentLoaded', () => {
+  startAuditRefresh();
+});
 {% endif %}
 </script>
 </body>

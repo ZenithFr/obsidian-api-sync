@@ -90,7 +90,7 @@ All file changes are broadcast instantly to all connected clients.
 This schema is designed to be ingested as an MCP tool definition.
 Each endpoint description explains exactly when and how an AI agent should use it.
 """,
-    version="1.0.0",
+    version="1.2.0",
     openapi_tags=[
         {"name": "files", "description": "Read and write markdown notes in the vault"},
         {"name": "admin", "description": "Token management and server configuration"},
