@@ -2,7 +2,7 @@ import { requestUrl, Notice, Modal, App } from 'obsidian';
 
 // A generic Client ID must be of type "Desktop app" or "TVs and Limited Input devices"
 // to use the Device Authorization Grant. Web Application types will fail.
-const GDRIVE_CLIENT_ID = "688466971657-jokujacgd326ct0m7smhoamhm1f47pji.apps.googleusercontent.com";
+const GDRIVE_CLIENT_ID = "688466971657-p9au1h7tljc33ku5i3vo08b7i4c47crl.apps.googleusercontent.com";
 
 export class GDriveClient {
   private plugin: any;
@@ -22,7 +22,7 @@ export class GDriveClient {
         url: 'https://oauth2.googleapis.com/device/code',
         method: 'POST',
         contentType: 'application/x-www-form-urlencoded',
-        body: `client_id=${GDRIVE_CLIENT_ID}&scope=https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email`
+        body: `client_id=${GDRIVE_CLIENT_ID}&scope=https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email`
       });
       
       const data = res.json;
