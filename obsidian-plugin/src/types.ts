@@ -96,5 +96,7 @@ export type InboundPayload =
   | FileChangedPayload
   | FileDeletedPayload
   | FileRenamedPayload
-  | ConnectedPayload
-  | ErrorPayload;
+  | FolderCreatedPayload
+  | { type: 'PING'; ts: string }
+  | { type: 'ERROR'; code: string; message: string }
+  | { type: 'CONNECTED'; client_id: string };

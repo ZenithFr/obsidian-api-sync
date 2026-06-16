@@ -1,11 +1,16 @@
-"""
+﻿"""
 database.py — Async SQLite access layer for Obsidian API Sync API.
 
 All DB operations are fully async via aiosqlite.  The vault path is stored in
 the `server_config` table so it can be updated at runtime without restarting
 the server process.
+
+Security: API tokens are stored as SHA-256 hashes.  Only the first 8 chars of
+the raw token (token_prefix) are persisted for display purposes.  The raw token
+is returned once at creation and never stored.
 """
 
+import hashlib
 import secrets
 from datetime import datetime, timezone
 from typing import Any
@@ -18,15 +23,16 @@ from config import settings
 DATABASE_PATH: str = settings.DB_PATH
 
 
-# ── Schema ────────────────────────────────────────────────────────────────────
+# -- Schema -------------------------------------------------------------------
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS tokens (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    token     TEXT UNIQUE NOT NULL,
-    label     TEXT NOT NULL DEFAULT 'default',
-    created   TEXT NOT NULL,
-    last_used TEXT
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    token        TEXT UNIQUE NOT NULL,
+    token_prefix TEXT NOT NULL DEFAULT '',
+    label        TEXT NOT NULL DEFAULT 'default',
+    created      TEXT NOT NULL,
+    last_used    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -45,55 +51,50 @@ CREATE TABLE IF NOT EXISTS server_config (
 """
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers ------------------------------------------------------------------
 
 def _utcnow_iso() -> str:
-    """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
-    """Convert an aiosqlite Row to a plain Python dict."""
     return dict(row)
 
 
-# ── Lifecycle ─────────────────────────────────────────────────────────────────
+def _hash_token(raw_token: str) -> str:
+    """Return the SHA-256 hex digest of a raw token string."""
+    return hashlib.sha256(raw_token.encode()).hexdigest()
+
+
+# -- Lifecycle ----------------------------------------------------------------
 
 async def init_db() -> None:
     """
-    Create all tables and seed the default vault path if it is not already set.
-
+    Create all tables, run schema migrations, and seed the default vault path.
     Called once at application startup via the FastAPI lifespan handler.
     """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
         await db.executescript(_SCHEMA_SQL)
+
+        # Migration: add token_prefix column to existing databases that lack it.
+        async with db.execute("PRAGMA table_info(tokens)") as cursor:
+            cols = {row["name"] async for row in cursor}
+        if "token_prefix" not in cols:
+            await db.execute(
+                "ALTER TABLE tokens ADD COLUMN token_prefix TEXT NOT NULL DEFAULT ''"
+            )
+
         await db.execute(
-            """
-            INSERT OR IGNORE INTO server_config (key, value)
-            VALUES ('vault_path', ?)
-            """,
+            "INSERT OR IGNORE INTO server_config (key, value) VALUES ('vault_path', ?)",
             (settings.DEFAULT_VAULT_PATH,),
         )
         await db.commit()
 
 
-# ── Vault Path ────────────────────────────────────────────────────────────────
+# -- Vault Path ---------------------------------------------------------------
 
 async def get_vault_path() -> str:
-    """
-    Read the vault_path from server_config.
-
-    Always performs a DB round-trip so that changes made via the dashboard
-    are immediately visible without restarting the server.
-
-    Returns:
-        The vault path string stored in the database.
-
-    Raises:
-        RuntimeError: If for some reason the key is missing (should not happen
-                      after init_db has run).
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -101,72 +102,54 @@ async def get_vault_path() -> str:
         ) as cursor:
             row = await cursor.fetchone()
             if row is None:
-                raise RuntimeError(
-                    "vault_path is not set in server_config. "
-                    "Ensure init_db() has been called."
-                )
+                raise RuntimeError("vault_path is not set in server_config.")
             return row["value"]
 
 
 async def set_vault_path(path: str) -> None:
-    """
-    Upsert the vault_path key in server_config.
-
-    Args:
-        path: The new absolute or relative path to the Obsidian vault directory.
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            """
-            INSERT INTO server_config (key, value) VALUES ('vault_path', ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
+            "INSERT INTO server_config (key, value) VALUES ('vault_path', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (path,),
         )
         await db.commit()
 
 
-# ── Token Management ──────────────────────────────────────────────────────────
+# -- Token Management ---------------------------------------------------------
 
 async def create_token(label: str) -> str:
     """
-    Generate a new URL-safe bearer token, persist it, and return the raw string.
-
-    Args:
-        label: Human-readable description for this token (e.g. "obsidian-plugin").
-
-    Returns:
-        The newly created raw token string.  This is the only time it is
-        returned in full — it is stored as-is (not hashed) for simplicity
-        in this single-operator deployment model.
+    Generate a URL-safe bearer token, store its SHA-256 hash, and return the
+    raw string (returned ONCE — never stored).
     """
-    token = secrets.token_urlsafe(32)
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = _hash_token(raw_token)
+    token_prefix = raw_token[:8]
     created = _utcnow_iso()
+
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
-            "INSERT INTO tokens (token, label, created) VALUES (?, ?, ?)",
-            (token, label, created),
+            "INSERT INTO tokens (token, token_prefix, label, created) VALUES (?, ?, ?, ?)",
+            (token_hash, token_prefix, label, created),
         )
         await db.commit()
-    return token
+    return raw_token
 
 
-async def verify_token(token: str) -> dict[str, Any] | None:
+async def verify_token(raw_token: str) -> dict[str, Any] | None:
     """
-    Look up a token by its value, update last_used, and return the row.
-
-    Args:
-        token: The raw bearer token string from the Authorization header.
-
-    Returns:
-        A dict with all token columns, or None if the token does not exist.
+    Hash the incoming token, look it up, update last_used, and return the row
+    without exposing the stored hash.
     """
+    token_hash = _hash_token(raw_token)
     now = _utcnow_iso()
+
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, token, label, created, last_used FROM tokens WHERE token = ?",
-            (token,),
+            "SELECT id, token_prefix, label, created, last_used FROM tokens WHERE token = ?",
+            (token_hash,),
         ) as cursor:
             row = await cursor.fetchone()
 
@@ -184,34 +167,23 @@ async def verify_token(token: str) -> dict[str, Any] | None:
 
 
 async def list_tokens() -> list[dict[str, Any]]:
-    """
-    Return all token rows (token value is included for dashboard display).
-
-    Returns:
-        A list of dicts, one per token row, ordered by id ascending.
-    """
+    """Return all token rows — hash is NOT returned, only token_prefix."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, token, label, created, last_used FROM tokens ORDER BY id ASC"
+            "SELECT id, token_prefix, label, created, last_used FROM tokens ORDER BY id ASC"
         ) as cursor:
             rows = await cursor.fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
 async def revoke_token(token_id: int) -> None:
-    """
-    Permanently delete a token by its numeric primary-key id.
-
-    Args:
-        token_id: The integer PK of the token to delete.
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("DELETE FROM tokens WHERE id = ?", (token_id,))
         await db.commit()
 
 
-# ── Audit Log ─────────────────────────────────────────────────────────────────
+# -- Audit Log ----------------------------------------------------------------
 
 async def add_audit(
     method: str,
@@ -219,15 +191,6 @@ async def add_audit(
     token_id: int | None,
     action: str,
 ) -> None:
-    """
-    Append one row to the audit log.
-
-    Args:
-        method:   HTTP method string (GET, POST, DELETE, WS, …).
-        path:     Vault-relative file path, or None for non-file actions.
-        token_id: The id of the authenticating token, or None for unauthenticated.
-        action:   Short human-readable description (e.g. "READ", "WRITE", "CONNECT").
-    """
     ts = _utcnow_iso()
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
@@ -238,15 +201,6 @@ async def add_audit(
 
 
 async def get_audit_log(limit: int = 50) -> list[dict[str, Any]]:
-    """
-    Retrieve the most recent audit log entries, newest first.
-
-    Args:
-        limit: Maximum number of rows to return (default 50).
-
-    Returns:
-        A list of dicts representing audit_log rows.
-    """
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(

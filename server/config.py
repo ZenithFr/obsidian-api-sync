@@ -1,18 +1,11 @@
-"""
-config.py — Application settings loaded from .env via pydantic-settings.
-
-All runtime configuration lives here.  The vault path itself is stored in
-SQLite (see database.py) so it can be changed at runtime without a restart;
-DEFAULT_VAULT_PATH is only the one-time seed value written to the DB when
-the row does not yet exist.
+﻿"""
+config.py -- Application settings loaded from .env via pydantic-settings.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Application-wide settings, sourced from environment variables / .env file."""
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -20,20 +13,41 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── Network ────────────────────────────────────────────────────────────────
+    # Network
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    # ── Security ───────────────────────────────────────────────────────────────
-    SECRET_KEY: str  # Required — no default. Used for session signing.
-    ADMIN_PASSWORD: str  # Required — no default. Protects /dashboard.
+    # Security
+    SECRET_KEY: str        # Required -- used for session signing.
+    ADMIN_PASSWORD: str    # Required -- protects /dashboard.
 
-    # ── Persistence ────────────────────────────────────────────────────────────
+    # CORS: comma-separated list of allowed origins.
+    # Leave empty to disallow all cross-origin requests (safe default).
+    # Example: CORS_ORIGINS=http://localhost:5173,https://my.vault.example.com
+    CORS_ORIGINS: str = ""
+
+    # Set True when running behind TLS (marks session cookie as Secure).
+    HTTPS_ONLY: bool = False
+
+    # Rate limiting (set False in local dev to skip)
+    RATE_LIMIT_ENABLED: bool = True
+    # Max login attempts per minute per IP
+    LOGIN_RATE_LIMIT: str = "5/minute"
+    # Max API requests per minute per token
+    API_RATE_LIMIT: str = "120/minute"
+
+    # Max size of a single file write (REST or WebSocket), in bytes.
+    MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
+
+    # Persistence
     DB_PATH: str = "./obsidian-sync.db"
-
-    # Seed value only: written to server_config on first run if vault_path is absent.
     DEFAULT_VAULT_PATH: str = "./vault"
 
+    def get_cors_origins(self) -> list[str]:
+        """Parse CORS_ORIGINS env var into a list."""
+        if not self.CORS_ORIGINS or not self.CORS_ORIGINS.strip():
+            return []
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
-# Singleton instance imported everywhere else.
+
 settings = Settings()

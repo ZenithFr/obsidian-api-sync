@@ -452,6 +452,9 @@
      JAVASCRIPT LOGIC
      ═══════════════════════════════════════════════════════════════ -->
 <script>
+// CSRF token injected from server session (double-submit pattern)
+const CSRF_TOKEN = {{ csrf_token | tojson if csrf_token is defined else '""' }};
+
 // Remove the brutalist theme toggler completely. The system is dark by default.
 localStorage.removeItem('obsidian-sync-theme');
 localStorage.removeItem('hermes-theme');
@@ -499,7 +502,9 @@ async function updateVaultPath() {
   if (!path) { showToast('Please enter a directory path.', 'error'); return; }
   try {
     const res = await fetch('/dashboard/vault-path', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, csrf_token: CSRF_TOKEN }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Failed to update path');
@@ -564,10 +569,10 @@ function renderTokenTable(tokens) {
     return;
   }
   tbody.innerHTML = tokens.map(tok => `
-    <tr data-token-id="${tok.id}" data-token-full="${tok.token}">
+    <tr data-token-id="${tok.id}">
       <td class="text-muted">#${tok.id}</td>
       <td><span class="chip">${escapeHtml(tok.label)}</span></td>
-      <td class="font-mono text-muted text-body-sm">${tok.token.slice(0, 16)}...</td>
+      <td class="font-mono text-muted text-body-sm">${escapeHtml(tok.token_prefix || '????????')}••••••••••••••••••••••••</td>
       <td class="text-muted text-body-sm">${tok.created}</td>
       <td class="text-muted text-body-sm">${tok.last_used || 'Never'}</td>
       <td class="text-right"><button onclick="revokeToken(${tok.id}, this)" class="btn-danger">Revoke</button></td>
@@ -578,9 +583,10 @@ function renderTokenTable(tokens) {
 function updateConnectTokenSelect(tokens) {
   const sel = document.getElementById('connect-token-select');
   if (!sel) return;
-  const current = sel.value;
-  sel.innerHTML = '<option value="">Choose token...</option>' +
-    tokens.map(t => `<option value="${t.token}" ${t.token === current ? 'selected' : ''}>#${t.id} - ${escapeHtml(t.label)}</option>`).join('');
+  // Note: raw token values are no longer stored server-side (hashed for security).
+  // The dropdown is kept for UX context only -- users must paste their token manually.
+  sel.innerHTML = '<option value="">Paste your token below...</option>' +
+    tokens.map(t => `<option value="" disabled>#${t.id} - ${escapeHtml(t.label)} (${escapeHtml(t.token_prefix || '?')}••••••••)</option>`).join('');
 }
 
 async function generateToken() {
@@ -588,7 +594,9 @@ async function generateToken() {
   const label = (input.value || 'default').trim();
   try {
     const res = await fetch('/dashboard/tokens', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, csrf_token: CSRF_TOKEN }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Token generation failed');

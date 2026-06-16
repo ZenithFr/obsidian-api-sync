@@ -256,6 +256,12 @@ export class ObsidianApiSyncWsClient {
       case 'FOLDER_CREATED':
         if (this.onFolderCreated) this.onFolderCreated(payload as FolderCreatedPayload);
         break;
+      case 'PING':
+        // Respond to server keepalive pings
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'PONG' }));
+        }
+        break;
 
       case 'CONNECTED': {
         const connPayload = payload as ConnectedPayload;
