@@ -1,4 +1,4 @@
-"""
+﻿"""
 config.py -- Application settings loaded from .env via pydantic-settings.
 """
 
@@ -42,14 +42,6 @@ class Settings(BaseSettings):
     # Persistence
     DB_PATH: str = "./obsidian-sync.db"
     DEFAULT_VAULT_PATH: str = "./vault"
-
-    # -- Google Drive OAuth2 (optional) ---------------------------------------
-    # Required only when using the Google Drive storage backend.
-    # Get these from: console.cloud.google.com -> APIs -> OAuth 2.0 Client IDs
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    # Must match an Authorized Redirect URI in your Google Cloud OAuth config.
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS env var into a list."""

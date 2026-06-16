@@ -1,4 +1,4 @@
-"""
+﻿"""
 routers/ws.py -- WebSocket endpoint and connection manager for Obsidian API Sync.
 
 Provides real-time bidirectional sync between the server vault and any connected
@@ -24,7 +24,6 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from auth import verify_ws_token
 from config import settings
 from database import add_audit, get_vault_path
-from storage import get_backend
 
 logger = logging.getLogger(__name__)
 
@@ -188,9 +187,10 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "FILE_MODIFY requires 'content'."})
                     continue
 
-                backend = await get_backend()
-                size_bytes = await backend.write_file(file_path, content)
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                target_file.write_text(content, encoding="utf-8")
                 ts = _utcnow_iso()
+                # Broadcast to all OTHER clients (exclude sender to prevent echo)
                 await manager.broadcast(
                     {"type": "FILE_CHANGED", "path": file_path, "content": content, "source": "ws", "ts": ts},
                     exclude=websocket,
@@ -199,9 +199,11 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
 
             # -- FILE_DELETE --------------------------------------------------
             elif msg_type == "FILE_DELETE":
-                backend = await get_backend()
-                if await backend.exists(file_path):
-                    await backend.delete(file_path)
+                if target_file.exists():
+                    if target_file.is_file():
+                        target_file.unlink()
+                    elif target_file.is_dir():
+                        shutil.rmtree(target_file)
 
                 ts = _utcnow_iso()
                 await manager.broadcast(
@@ -217,11 +219,15 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "FILE_RENAME requires 'new_path'."})
                     continue
 
-                backend = await get_backend()
-                if await backend.exists(file_path):
-                    old_content = await backend.read_file(file_path)
-                    await backend.write_file(new_path, old_content)
-                    await backend.delete(file_path)
+                try:
+                    target_new = _sanitize_path(vault_path, new_path)
+                except ValueError as exc:
+                    await websocket.send_json({"type": "ERROR", "code": "PATH_TRAVERSAL", "message": str(exc)})
+                    continue
+
+                if target_file.exists():
+                    target_new.parent.mkdir(parents=True, exist_ok=True)
+                    target_file.rename(target_new)
 
                 ts = _utcnow_iso()
                 await manager.broadcast(
@@ -232,8 +238,7 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
 
             # -- FOLDER_CREATE ------------------------------------------------
             elif msg_type == "FOLDER_CREATE":
-                backend = await get_backend()
-                await backend.create_folder(file_path)
+                target_file.mkdir(parents=True, exist_ok=True)
                 ts = _utcnow_iso()
                 await manager.broadcast(
                     {"type": "FOLDER_CREATED", "path": file_path, "source": "ws", "ts": ts},
