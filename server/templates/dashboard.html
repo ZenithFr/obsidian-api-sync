@@ -212,6 +212,7 @@
     <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">Access Tokens</button>
     <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">Client Connection</button>
     <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">Audit Log</button>
+    <button onclick="switchTab('storage')" id="tab-storage" class="tab-btn">☁ Storage</button>
   </div>
 </div>
 
@@ -439,6 +440,106 @@
         </table>
       </div>
     </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       STORAGE TAB
+       ═══════════════════════════════════════════════════════════════ -->
+  <div id="panel-storage" class="tab-panel space-y-lg hidden">
+
+    <!-- Current backend status -->
+    <div class="card">
+      <div class="flex items-center justify-between flex-wrap gap-4 mb-md">
+        <div>
+          <h2 class="text-headline-sm">Storage Backend</h2>
+          <p class="text-body-sm text-muted mt-xs">Choose where your vault files live.</p>
+        </div>
+        <div id="backend-badge" class="chip">Loading...</div>
+      </div>
+      <div id="backend-detail" class="text-body-sm text-muted">Checking storage status...</div>
+    </div>
+
+    <!-- Google Drive section -->
+    {% if gdrive_enabled %}
+    <div class="card space-y-md">
+      <div>
+        <h3 class="text-title-md flex items-center gap-sm">
+          <svg class="w-5 h-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+            <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+            <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+            <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+            <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+            <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+            <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+          </svg>
+          Google Drive
+        </h3>
+        <p class="text-body-sm text-muted mt-xs">Your vault files will be read and written directly to a folder in your Google Drive. Your files stay in your account — no one else has access.</p>
+      </div>
+
+      <!-- Not connected -->
+      <div id="gdrive-disconnected" class="space-y-md">
+        <a href="/auth/google" class="btn-primary inline-flex items-center gap-sm">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Sign in with Google
+        </a>
+        <p class="text-caption text-muted">You will be redirected to Google to grant access to your Drive. Only this server can access the chosen folder.</p>
+      </div>
+
+      <!-- Connected — folder picker -->
+      <div id="gdrive-connected" class="hidden space-y-md">
+        <div class="bg-success/10 border border-success/30 rounded-md p-md flex items-center gap-sm">
+          <span class="text-success text-lg">✓</span>
+          <div>
+            <div class="text-label-md text-success">Connected</div>
+            <div id="gdrive-email" class="text-caption text-muted"></div>
+          </div>
+        </div>
+
+        <div class="space-y-sm">
+          <label class="text-label-sm">Select or create a Drive folder for your vault:</label>
+          <div class="flex gap-sm flex-wrap">
+            <select id="gdrive-folder-select" class="input flex-1" onchange="onFolderSelect()">
+              <option value="">Loading your folders...</option>
+            </select>
+            <button onclick="loadDriveFolders()" class="btn-secondary">Refresh</button>
+          </div>
+          <div class="flex gap-sm items-center">
+            <input id="gdrive-folder-id-input" type="text" placeholder="Or paste a Drive folder ID directly" class="input flex-1" />
+            <input id="gdrive-folder-name-input" type="text" placeholder="Folder display name" class="input w-48" />
+          </div>
+          <p class="text-caption text-muted">To find a folder ID: open the folder in Google Drive, the ID is the last part of the URL after /folders/</p>
+        </div>
+
+        <div class="flex gap-sm flex-wrap">
+          <button onclick="activateDrive()" class="btn-primary">Use This Folder as Vault</button>
+          <button onclick="disconnectDrive()" class="btn-danger-outline">Disconnect Google Drive</button>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="flex items-start gap-md">
+        <span class="text-2xl">⚙</span>
+        <div>
+          <h3 class="text-title-md">Google Drive not configured</h3>
+          <p class="text-body-sm text-muted mt-xs">To enable Google Drive storage, add the following to your <code class="font-mono bg-neutral px-1 rounded">.env</code> file:</p>
+          <pre class="bg-neutral border border-border rounded-md p-md mt-sm text-body-sm font-mono overflow-x-auto">GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
+GOOGLE_REDIRECT_URI=http://your-server/auth/google/callback</pre>
+          <p class="text-body-sm text-muted mt-sm">Then restart the server. See <strong>README.md</strong> for the one-time Google Cloud setup instructions.</p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Switch to local -->
+    <div class="card">
+      <h3 class="text-title-md mb-sm">Local Disk Storage</h3>
+      <p class="text-body-sm text-muted mb-md">The default backend — vault files are stored on the server's local filesystem at the path configured in the Vault tab.</p>
+      <button onclick="switchToLocal()" class="btn-secondary" id="switch-local-btn">Switch to Local Storage</button>
+    </div>
+
   </div>
 
 </main>
@@ -729,8 +830,150 @@ function escapeHtml(str) {
 {% if view == 'dashboard' %}
 document.addEventListener('DOMContentLoaded', () => {
   startAuditRefresh();
+  // Auto-open storage tab if redirected back from OAuth
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('tab') === 'storage' || params.get('gdrive_connected')) {
+    switchTab('storage');
+  }
+  if (params.get('gdrive_connected')) {
+    loadStorageStatus();
+  }
+  if (params.get('gdrive_error')) {
+    showToast(params.get('gdrive_error'), 'error');
+  }
 });
 {% endif %}
+
+// ── Storage Tab JS ────────────────────────────────────────────────────────────
+
+async function loadStorageStatus() {
+  try {
+    const res = await fetch('/dashboard/storage-status');
+    if (!res.ok) return;
+    const data = await res.json();
+    const badge = document.getElementById('backend-badge');
+    const detail = document.getElementById('backend-detail');
+
+    if (data.backend === 'google_drive' && data.gdrive_connected) {
+      badge.textContent = '☁ Google Drive';
+      badge.className = 'chip bg-blue-500/20 text-blue-300 border-blue-500/30';
+      detail.innerHTML = `Active Drive folder: <strong>${escapeHtml(data.gdrive_folder_name || 'Unknown')}</strong> &bull; Connected as: ${escapeHtml(data.gdrive_email || 'unknown')}`;
+      // Show connected state, hide disconnected
+      document.getElementById('gdrive-connected')?.classList.remove('hidden');
+      document.getElementById('gdrive-disconnected')?.classList.add('hidden');
+      document.getElementById('gdrive-email').textContent = data.gdrive_email || '';
+      document.getElementById('switch-local-btn').disabled = false;
+    } else {
+      badge.textContent = '💾 Local Disk';
+      badge.className = 'chip';
+      detail.textContent = 'Vault files are stored on the server\'s local filesystem.';
+      document.getElementById('gdrive-connected')?.classList.add('hidden');
+      document.getElementById('gdrive-disconnected')?.classList.remove('hidden');
+      document.getElementById('switch-local-btn').disabled = true;
+    }
+
+    // Check if we just came back from OAuth (pending token in session)
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('gdrive_connected') && !data.gdrive_connected) {
+      // Refresh token is in server session, show folder picker
+      document.getElementById('gdrive-connected')?.classList.remove('hidden');
+      document.getElementById('gdrive-disconnected')?.classList.add('hidden');
+      document.getElementById('gdrive-email').textContent = 'Loading...';
+      await loadDriveFolders();
+    }
+  } catch (err) {
+    console.warn('Storage status error:', err);
+  }
+}
+
+async function loadDriveFolders() {
+  const sel = document.getElementById('gdrive-folder-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Loading...</option>';
+  try {
+    const res = await fetch('/auth/google/folders');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.folders.length === 0) {
+      sel.innerHTML = '<option value="">No folders found in Drive root</option>';
+    } else {
+      sel.innerHTML = '<option value="">-- Choose a folder --</option>' +
+        data.folders.map(f => `<option value="${escapeHtml(f.id)}" data-name="${escapeHtml(f.name)}">${escapeHtml(f.name)}</option>`).join('');
+    }
+  } catch (err) {
+    sel.innerHTML = '<option value="">Failed to load folders</option>';
+    showToast('Could not load Drive folders: ' + err.message, 'error');
+  }
+}
+
+function onFolderSelect() {
+  const sel = document.getElementById('gdrive-folder-select');
+  const selected = sel.options[sel.selectedIndex];
+  if (selected.value) {
+    document.getElementById('gdrive-folder-id-input').value = selected.value;
+    document.getElementById('gdrive-folder-name-input').value = selected.dataset.name || '';
+  }
+}
+
+async function activateDrive() {
+  const folderId = document.getElementById('gdrive-folder-id-input').value.trim();
+  const folderName = document.getElementById('gdrive-folder-name-input').value.trim() || 'ObsidianVault';
+  if (!folderId) {
+    showToast('Please select or enter a folder ID.', 'error');
+    return;
+  }
+  try {
+    const res = await fetch('/auth/google/select-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder_id: folderId, folder_name: folderName, csrf_token: CSRF_TOKEN }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Failed to activate');
+    showToast(`Google Drive vault activated: ${data.folder_name}`);
+    await loadStorageStatus();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function disconnectDrive() {
+  if (!confirm('Disconnect Google Drive? The server will switch back to local disk storage. Your Drive files are not deleted.')) return;
+  try {
+    const res = await fetch('/auth/google/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csrf_token: CSRF_TOKEN }),
+    });
+    if (!res.ok) throw new Error('Disconnect failed');
+    showToast('Disconnected from Google Drive. Now using local storage.');
+    await loadStorageStatus();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function switchToLocal() {
+  try {
+    const res = await fetch('/auth/google/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csrf_token: CSRF_TOKEN }),
+    });
+    if (!res.ok) throw new Error('Switch failed');
+    showToast('Switched to local disk storage.');
+    await loadStorageStatus();
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+// Load storage status when storage tab is opened
+const _origSwitchTab = switchTab;
+function switchTab(name) {
+  _origSwitchTab(name);
+  if (name === 'storage') loadStorageStatus();
+}
 </script>
 </body>
 </html>

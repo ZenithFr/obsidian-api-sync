@@ -1,4 +1,4 @@
-﻿"""
+"""
 database.py — Async SQLite access layer for Obsidian API Sync API.
 
 All DB operations are fully async via aiosqlite.  The vault path is stored in
@@ -209,3 +209,84 @@ async def get_audit_log(limit: int = 50) -> list[dict[str, Any]]:
         ) as cursor:
             rows = await cursor.fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+# -- Storage Backend ----------------------------------------------------------
+
+async def get_storage_backend() -> str:
+    """
+    Return the active storage backend name ('local' or 'google_drive').
+    Defaults to 'local' if not set.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT value FROM server_config WHERE key = 'storage_backend'"
+        ) as cursor:
+            row = await cursor.fetchone()
+    return row["value"] if row else "local"
+
+
+async def set_storage_backend(backend: str) -> None:
+    """Set the active storage backend ('local' or 'google_drive')."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT INTO server_config (key, value) VALUES ('storage_backend', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (backend,),
+        )
+        await db.commit()
+
+
+async def get_gdrive_credentials() -> dict[str, str] | None:
+    """
+    Return stored Google Drive OAuth credentials or None if not connected.
+    Returns: dict with keys: refresh_token, folder_id, folder_name, user_email
+    """
+    keys = ("gdrive_refresh_token", "gdrive_folder_id", "gdrive_folder_name", "gdrive_user_email")
+    result: dict[str, str] = {}
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        for key in keys:
+            async with db.execute(
+                "SELECT value FROM server_config WHERE key = ?", (key,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            if row:
+                short_key = key.replace("gdrive_", "")
+                result[short_key] = row["value"]
+    if "refresh_token" not in result:
+        return None
+    return result
+
+
+async def set_gdrive_credentials(
+    refresh_token: str,
+    folder_id: str,
+    folder_name: str,
+    user_email: str,
+) -> None:
+    """Store Google Drive OAuth credentials and metadata."""
+    entries = {
+        "gdrive_refresh_token": refresh_token,
+        "gdrive_folder_id": folder_id,
+        "gdrive_folder_name": folder_name,
+        "gdrive_user_email": user_email,
+    }
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        for key, value in entries.items():
+            await db.execute(
+                "INSERT INTO server_config (key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (key, value),
+            )
+        await db.commit()
+
+
+async def clear_gdrive_credentials() -> None:
+    """Remove all stored Google Drive credentials (disconnect)."""
+    keys = ("gdrive_refresh_token", "gdrive_folder_id", "gdrive_folder_name", "gdrive_user_email")
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        for key in keys:
+            await db.execute("DELETE FROM server_config WHERE key = ?", (key,))
+        await db.commit()
