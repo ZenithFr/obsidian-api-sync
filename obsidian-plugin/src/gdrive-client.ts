@@ -1,4 +1,4 @@
-import { requestUrl, Notice, Modal, App } from 'obsidian';
+﻿import { requestUrl, Notice, Modal, App } from 'obsidian';
 
 // A generic Client ID must be of type "Desktop app" or "TVs and Limited Input devices"
 // to use the Device Authorization Grant. Web Application types will fail.
@@ -58,7 +58,8 @@ export class GDriveClient {
           
           if (pollData.error) {
             if (pollData.error === 'authorization_pending') {
-              setTimeout(poll, interval); // Keep waiting
+              // This is completely normal and expected. Google returns 400 Bad Request until the user finishes logging in.
+              setTimeout(poll, interval); 
             } else {
               modal.close();
               new Notice(`Login failed: ${pollData.error}`);
@@ -284,23 +285,69 @@ class DeviceFlowModal extends Modal {
     
     contentEl.createEl('h2', { text: 'Connect to Google Drive' });
     
-    contentEl.createEl('p', { text: 'Please visit the following URL on any device:' });
-    const link = contentEl.createEl('a', { text: this.url, href: this.url });
-    link.style.fontSize = '1.2em';
-    link.style.display = 'block';
-    link.style.marginBottom = '1em';
-    
-    contentEl.createEl('p', { text: 'And enter this code:' });
-    const codeEl = contentEl.createEl('div', { text: this.code });
+    const wrapper = contentEl.createDiv();
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.gap = '20px';
+    wrapper.style.alignItems = 'center';
+    wrapper.style.padding = '20px 0';
+
+    // Copy Code Box
+    const codeBox = wrapper.createDiv();
+    codeBox.style.display = 'flex';
+    codeBox.style.flexDirection = 'column';
+    codeBox.style.alignItems = 'center';
+    codeBox.style.gap = '10px';
+
+    const codeLabel = codeBox.createEl('span', { text: '1. Copy this security code:' });
+    codeLabel.style.fontWeight = '600';
+
+    const codeContainer = codeBox.createDiv();
+    codeContainer.style.display = 'flex';
+    codeContainer.style.gap = '10px';
+    codeContainer.style.alignItems = 'center';
+
+    const codeEl = codeContainer.createEl('div', { text: this.code });
     codeEl.style.fontSize = '2em';
     codeEl.style.fontWeight = 'bold';
     codeEl.style.letterSpacing = '2px';
-    codeEl.style.padding = '10px';
+    codeEl.style.padding = '10px 20px';
     codeEl.style.backgroundColor = 'var(--background-secondary)';
-    codeEl.style.textAlign = 'center';
     codeEl.style.borderRadius = '5px';
-    
-    contentEl.createEl('p', { text: 'Waiting for you to authorize... (This window will close automatically)' }).style.marginTop = '2em';
+    codeEl.style.userSelect = 'all';
+
+    const copyBtn = codeContainer.createEl('button', { text: 'Copy' });
+    copyBtn.style.padding = '10px 20px';
+    copyBtn.style.height = '100%';
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(this.code);
+      copyBtn.innerText = 'Copied!';
+      setTimeout(() => { copyBtn.innerText = 'Copy'; }, 2000);
+    };
+
+    // Open Link Box
+    const linkBox = wrapper.createDiv();
+    linkBox.style.display = 'flex';
+    linkBox.style.flexDirection = 'column';
+    linkBox.style.alignItems = 'center';
+    linkBox.style.gap = '10px';
+
+    const linkLabel = linkBox.createEl('span', { text: '2. Click here to login and paste the code:' });
+    linkLabel.style.fontWeight = '600';
+
+    const linkBtn = linkBox.createEl('a', { text: 'Open Google Login', href: this.url });
+    linkBtn.addClass('mod-cta');
+    linkBtn.style.padding = '10px 20px';
+    linkBtn.style.borderRadius = '5px';
+    linkBtn.style.textDecoration = 'none';
+    linkBtn.style.color = 'var(--text-on-accent)';
+    linkBtn.style.fontSize = '1.1em';
+
+    // Status
+    const statusEl = contentEl.createEl('p', { text: 'Waiting for you to authorize... (This window will close automatically)' });
+    statusEl.style.marginTop = '2em';
+    statusEl.style.textAlign = 'center';
+    statusEl.style.color = 'var(--text-muted)';
   }
 
   onClose() {
