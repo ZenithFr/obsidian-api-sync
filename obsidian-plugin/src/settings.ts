@@ -1,4 +1,4 @@
-﻿import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import { WsState } from './ws-client';
 import type { QuickImportConfig } from './types';
 
@@ -289,8 +289,9 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
           .onClick(async () => {
             if (this.plugin.gdriveClient) {
               // startDeviceFlow will handle the modal popup
-              await this.plugin.gdriveClient.startDeviceFlow();
-              this.display();
+              await this.plugin.gdriveClient.startDeviceFlow(() => {
+                this.display();
+              });
             } else {
               new Notice("GDrive client not initialized");
             }

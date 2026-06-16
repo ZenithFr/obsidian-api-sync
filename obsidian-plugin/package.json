@@ -1,6 +1,6 @@
 {
   "name": "obsidian-api-sync",
-  "version": "1.5.2-beta",
+  "version": "1.5.3-beta",
   "description": "Bi-directional real-time and Serverless Google Drive vault sync for Obsidian.",
   "main": "main.js",
   "scripts": {

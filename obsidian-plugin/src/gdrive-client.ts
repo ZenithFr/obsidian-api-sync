@@ -1,4 +1,4 @@
-﻿import { requestUrl, Notice, Modal, App } from 'obsidian';
+import { requestUrl, Notice, Modal, App } from 'obsidian';
 
 // A generic Client ID must be of type "Desktop app" or "TVs and Limited Input devices"
 // to use the Device Authorization Grant. Web Application types will fail.
@@ -15,14 +15,15 @@ export class GDriveClient {
 
   // ─── OAuth Device Flow ──────────────────────────────────────────────────────
 
-  async startDeviceFlow(): Promise<void> {
+  async startDeviceFlow(onSuccess?: () => void): Promise<void> {
     try {
       // 1. Request device code
       const res = await requestUrl({
         url: 'https://oauth2.googleapis.com/device/code',
         method: 'POST',
         contentType: 'application/x-www-form-urlencoded',
-        body: `client_id=${GDRIVE_CLIENT_ID}&scope=https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email`
+        body: `client_id=${GDRIVE_CLIENT_ID}&scope=https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email`,
+        throw: false
       });
       
       const data = res.json;
@@ -51,20 +52,16 @@ export class GDriveClient {
             url: 'https://oauth2.googleapis.com/token',
             method: 'POST',
             contentType: 'application/x-www-form-urlencoded',
-            body: `client_id=${GDRIVE_CLIENT_ID}&device_code=${deviceCode}&grant_type=urn:ietf:params:oauth:grant-type:device_code`
+            body: `client_id=${GDRIVE_CLIENT_ID}&device_code=${deviceCode}&grant_type=urn:ietf:params:oauth:grant-type:device_code`,
+            throw: false
           });
 
           const pollData = pollRes.json;
           
-          if (pollData.error) {
-            if (pollData.error === 'authorization_pending') {
-              // This is completely normal and expected. Google returns 400 Bad Request until the user finishes logging in.
-              setTimeout(poll, interval); 
-            } else {
-              modal.close();
-              new Notice(`Login failed: ${pollData.error}`);
-            }
-          } else if (pollData.access_token) {
+          if (pollRes.status === 400 && pollData?.error === 'authorization_pending') {
+            // This is completely normal and expected. Google returns 400 Bad Request until the user finishes logging in.
+            setTimeout(poll, interval); 
+          } else if (pollRes.status === 200 && pollData?.access_token) {
             // Success!
             modal.close();
             this.accessToken = pollData.access_token;
@@ -78,17 +75,14 @@ export class GDriveClient {
             
             await this.plugin.saveSettings();
             new Notice("✅ Successfully connected to Google Drive!");
-            // Re-render settings tab if open
-            this.plugin.app.setting.openTabById(this.plugin.manifest.id);
+            if (onSuccess) onSuccess();
+          } else {
+            modal.close();
+            new Notice(`Login failed: ${pollData?.error_description || pollData?.error || 'Unknown error'}`);
           }
         } catch (err: any) {
-          // requestUrl throws on non-2xx statuses, which happens during 'authorization_pending' (HTTP 400)
-          if (err.status === 400 && err.json?.error === 'authorization_pending') {
-             setTimeout(poll, interval);
-          } else {
-             modal.close();
-             new Notice("Error polling for token: " + err.message);
-          }
+           modal.close();
+           new Notice("Error polling for token: " + err.message);
         }
       };
 
@@ -122,11 +116,12 @@ export class GDriveClient {
       url: 'https://oauth2.googleapis.com/token',
       method: 'POST',
       contentType: 'application/x-www-form-urlencoded',
-      body: `client_id=${GDRIVE_CLIENT_ID}&refresh_token=${rt}&grant_type=refresh_token`
+      body: `client_id=${GDRIVE_CLIENT_ID}&refresh_token=${rt}&grant_type=refresh_token`,
+      throw: false
     });
 
     const data = res.json;
-    if (data.error) {
+    if (res.status !== 200 || data.error) {
       await this.disconnect();
       throw new Error("Google Drive session expired. Please log in again.");
     }

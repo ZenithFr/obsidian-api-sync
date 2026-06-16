@@ -1,7 +1,7 @@
 {
   "id": "obsidian-api-sync",
   "name": "Obsidian API Sync",
-  "version": "1.5.2-beta",
+  "version": "1.5.3-beta",
   "minAppVersion": "1.4.0",
   "description": "Bi-directional real-time and Serverless Google Drive vault sync for Obsidian. Enables AI agents and humans to read/write notes simultaneously.",
   "author": "Obsidian API Sync",
