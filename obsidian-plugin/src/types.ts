@@ -1,20 +1,32 @@
 // Settings stored in Obsidian's plugin data
 export interface ObsidianApiSyncSettings {
+  syncMode: 'server' | 'gdrive';
   serverUrl: string;
   apiToken: string;
   syncOnModify: boolean;
   syncDebounceMs: number;
   autoReconnect: boolean;
   reconnectIntervalMs: number;
+  gdriveRefreshToken: string;
+  gdriveFolderId: string;
+  gdriveFolderName: string;
+  gdriveEmail: string;
+  autoSyncIntervalMins: number;
 }
 
 export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
+  syncMode: 'server',
   serverUrl: '',
   apiToken: '',
   syncOnModify: true,
   syncDebounceMs: 150,
   autoReconnect: true,
   reconnectIntervalMs: 3000,
+  gdriveRefreshToken: '',
+  gdriveFolderId: '',
+  gdriveFolderName: '',
+  gdriveEmail: '',
+  autoSyncIntervalMins: 1,
 };
 
 export interface FolderCreatePayload {

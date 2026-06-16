@@ -1,128 +1,128 @@
-import { Plugin, TFile, TAbstractFile, Notice, requestUrl } from 'obsidian';
+﻿import { Plugin, TFile, TAbstractFile, Notice, requestUrl } from 'obsidian';
 import { ObsidianApiSyncSettings, DEFAULT_SETTINGS } from './types';
 import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
 import { ObsidianApiSyncSettingTab } from './settings';
+import { GDriveClient } from './gdrive-client';
+import { SyncEngine } from './sync-engine';
 
 export default class ObsidianApiSyncPlugin extends Plugin {
   settings!: ObsidianApiSyncSettings;
   wsClient!: ObsidianApiSyncWsClient;
+  gdriveClient!: GDriveClient;
+  syncEngine!: SyncEngine;
   private statusBarItem!: HTMLElement;
   private modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private remoteChangeLocks: Map<string, number> = new Map();
+  private syncTimerId: ReturnType<typeof setInterval> | null = null;
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
-    // Create WebSocket client
+    // Init Server Mode Client
     this.wsClient = createWsClient();
     this.wsClient.setAutoReconnect(this.settings.autoReconnect);
 
-    // ── WS Callbacks ──────────────────────────────────────────────────────────
+    // Init Serverless GDrive Mode Clients
+    this.gdriveClient = new GDriveClient(this);
+    this.syncEngine = new SyncEngine(this.app, this.gdriveClient, this);
 
-    this.wsClient.onFileChanged = async (payload) => {
-      const file = this.app.vault.getAbstractFileByPath(payload.path);
+    this.setupWsCallbacks();
 
-      if (file instanceof TFile) {
-        // Echo-loop prevention: only write if content actually differs
-        const currentContent = await this.app.vault.read(file);
-        const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
-        const normalizedRemote = payload.content.replace(/\r\n/g, '\n');
-        if (normalizedLocal !== normalizedRemote) {
-          // Cancel any pending outbound syncs for this file since it was just overwritten
-          if (this.modifyDebounceTimers.has(file.path)) {
-            clearTimeout(this.modifyDebounceTimers.get(file.path)!);
-            this.modifyDebounceTimers.delete(file.path);
-          }
-          // Lock for 800ms to allow Obsidian to update its UI without bouncing the change back
-          this.remoteChangeLocks.set(file.path, Date.now() + 800);
-          try {
-            await this.app.vault.modify(file, payload.content);
-          } catch (err) {
-            console.error('[ObsidianApiSync] modify failed', err);
-          }
-        }
-      } else if (!file) {
-        // File doesn't exist locally yet — create it
-        try {
-          await this.ensureFolderExists(payload.path);
-          await this.app.vault.create(payload.path, payload.content);
-        } catch (err) {
-          console.error('[ObsidianApiSync] Failed to create file from remote change:', err);
-        }
-      }
-    };
-
-    this.wsClient.onFolderCreated = async (payload) => {
-      const folder = this.app.vault.getAbstractFileByPath(payload.path);
-      if (!folder) {
-        this.remoteChangeLocks.set(payload.path, Date.now() + 800);
-        await this.ensureFolderExists(payload.path);
-      }
-    };
-
-    this.wsClient.onFileDeleted = async (payload) => {
-      const file = this.app.vault.getAbstractFileByPath(payload.path);
-      if (file) {
-        try {
-          await this.app.vault.trash(file, false); // move to system trash
-        } catch (err) {
-          console.error('[ObsidianApiSync] Failed to process remote delete:', err);
-        }
-      }
-    };
-
-    this.wsClient.onFileRenamed = async (payload) => {
-      const file = this.app.vault.getAbstractFileByPath(payload.old_path);
-      if (file) {
-        try {
-          await this.ensureFolderExists(payload.new_path);
-          await this.app.vault.rename(file, payload.new_path);
-        } catch (err) {
-          console.error('[ObsidianApiSync] Failed to process remote rename:', err);
-        }
-      }
-    };
-
-    this.wsClient.onStateChange = (state: WsState) => {
-      this.updateStatusBar(state);
-    };
-
-    this.wsClient.onConnected = (clientId: string) => {
-      console.log(`[ObsidianApiSync] Connected. Client ID: ${clientId}`);
-      this.pullAllFiles();
-    };
-
-    this.wsClient.onError = (payload) => {
-      new Notice(`⚠️ ObsidianApiSync error [${payload.code}]: ${payload.message}`);
-    };
-
-    // ── Settings Tab ──────────────────────────────────────────────────────────
+    // Settings Tab
     this.addSettingTab(new ObsidianApiSyncSettingTab(this.app, this));
 
-    // ── Status Bar ────────────────────────────────────────────────────────────
+    // Status Bar
     this.statusBarItem = this.addStatusBarItem();
     this.updateStatusBar(WsState.DISCONNECTED);
 
-    // ── Auto-connect on startup ───────────────────────────────────────────────
-    if (this.settings.serverUrl && this.settings.apiToken) {
-      this.connectWs();
-    }
+    // Auto-connect on startup
+    this.reconfigureSyncMode();
 
-    // ── Commands ──────────────────────────────────────────────────────────────
+    // Commands
     this.addCommand({
       id: 'ObsidianApiSync-pull-all',
-      name: 'Pull all files from server',
+      name: 'Pull all files from server (Server Mode)',
       callback: () => this.pullAllFiles(),
     });
 
-    // ── Editor & Vault Events ─────────────────────────────────────────────────
-    
-    // 1. Hook into editor changes for instant, letter-by-letter sync
+    this.addCommand({
+      id: 'ObsidianApiSync-gdrive-sync',
+      name: 'Sync Now (Google Drive Mode)',
+      callback: () => {
+        if (this.settings.syncMode === 'gdrive') {
+          this.syncEngine.runSync(true);
+        } else {
+          new Notice('Not in Google Drive Sync Mode.');
+        }
+      },
+    });
+
+    this.setupVaultHooks();
+
+    // Ribbon Icon
+    this.addRibbonIcon('sync', 'Obsidian API Sync', () => {
+      if (this.settings.syncMode === 'gdrive') {
+        this.syncEngine.runSync(true);
+      } else {
+        const state = this.wsClient.getState();
+        new Notice(`ObsidianApiSync Server state: ${state}`);
+      }
+    });
+  }
+
+  onunload(): void {
+    this.wsClient.disconnect();
+    if (this.syncTimerId) clearInterval(this.syncTimerId);
+  }
+
+  // ─── Modes & Control ────────────────────────────────────────────────────────
+
+  reconfigureSyncMode() {
+    if (this.syncTimerId) {
+      clearInterval(this.syncTimerId);
+      this.syncTimerId = null;
+    }
+
+    if (this.settings.syncMode === 'server') {
+      if (this.settings.serverUrl && this.settings.apiToken) {
+        this.connectWs();
+      }
+      this.updateStatusBar(this.wsClient.getState());
+    } else if (this.settings.syncMode === 'gdrive') {
+      this.wsClient.disconnect();
+      this.statusBarItem.setText('☁ GDrive Sync Active');
+      
+      const intervalMs = (this.settings.autoSyncIntervalMins || 1) * 60 * 1000;
+      this.syncTimerId = setInterval(() => {
+        this.syncEngine.runSync(false);
+      }, intervalMs);
+
+      // Run an initial sync
+      setTimeout(() => this.syncEngine.runSync(false), 5000);
+    }
+  }
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings);
+    this.reconfigureSyncMode(); // Re-apply timers/connections if mode changed
+  }
+
+  async loadSettings(): Promise<void> {
+    this.settings = Object.assign(
+      {},
+      DEFAULT_SETTINGS,
+      (await this.loadData()) as Partial<ObsidianApiSyncSettings>
+    );
+  }
+
+  // ─── Vault Hooks (Server Mode Only) ─────────────────────────────────────────
+
+  private setupVaultHooks() {
     this.registerEvent(
       this.app.workspace.on('editor-change', (editor, info) => {
-        if (!this.settings.syncOnModify) return;
+        if (this.settings.syncMode !== 'server' || !this.settings.syncOnModify) return;
 
         const file = info?.file || this.app.workspace.getActiveFile();
         if (!(file instanceof TFile)) return;
@@ -148,16 +148,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       })
     );
 
-    // 2. Fallback for non-editor modifications (e.g. other plugins or syncing)
     this.registerEvent(
       this.app.vault.on('modify', (file: TAbstractFile) => {
+        if (this.settings.syncMode !== 'server' || !this.settings.syncOnModify) return;
         if (!(file instanceof TFile)) return;
-        if (!this.settings.syncOnModify) return;
         
         const lockExpiry = this.remoteChangeLocks.get(file.path);
-        if (lockExpiry && Date.now() < lockExpiry) return; // ignore our own remote updates
+        if (lockExpiry && Date.now() < lockExpiry) return;
 
-        // If a timer is already running (e.g. from editor-change), don't override it
         if (this.modifyDebounceTimers.has(file.path)) return;
 
         const timer = setTimeout(async () => {
@@ -174,16 +172,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       })
     );
 
-    // 3. New File Creation
     this.registerEvent(
       this.app.vault.on('create', (file: TAbstractFile) => {
-        if (!this.settings.syncOnModify) return;
+        if (this.settings.syncMode !== 'server' || !this.settings.syncOnModify) return;
         
         const lockExpiry = this.remoteChangeLocks.get(file.path);
         if (lockExpiry && Date.now() < lockExpiry) return;
 
         if (file instanceof TFile) {
-          // Give Obsidian a tiny tick to finish writing the file to disk
           setTimeout(async () => {
             if (this.wsClient.getState() === WsState.CONNECTED) {
               const content = await this.app.vault.read(file);
@@ -191,7 +187,6 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             }
           }, 300);
         } else {
-          // It's a folder
           if (this.wsClient.getState() === WsState.CONNECTED) {
             this.wsClient.sendFolderCreate(file.path);
           }
@@ -201,7 +196,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
     this.registerEvent(
       this.app.vault.on('delete', (file: TAbstractFile) => {
-        if (!this.settings.syncOnModify) return;
+        if (this.settings.syncMode !== 'server' || !this.settings.syncOnModify) return;
         if (this.wsClient.getState() === WsState.CONNECTED) {
           this.wsClient.sendFileDelete(file.path);
         }
@@ -210,39 +205,108 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
     this.registerEvent(
       this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
-        if (!this.settings.syncOnModify) return;
+        if (this.settings.syncMode !== 'server' || !this.settings.syncOnModify) return;
         if (this.wsClient.getState() === WsState.CONNECTED) {
           this.wsClient.sendFileRename(oldPath, file.path);
         }
       })
     );
-
-    // ── Ribbon Icon ───────────────────────────────────────────────────────────
-    this.addRibbonIcon('sync', 'Obsidian API Sync', () => {
-      const state = this.wsClient.getState();
-      const messages: Record<WsState, string> = {
-        [WsState.CONNECTED]: '🟢 ObsidianApiSync: Connected and syncing.',
-        [WsState.CONNECTING]: '🟡 ObsidianApiSync: Connecting to server…',
-        [WsState.RECONNECTING]: '🟡 ObsidianApiSync: Reconnecting to server…',
-        [WsState.DISCONNECTED]: '🔴 ObsidianApiSync: Disconnected. Check settings.',
-      };
-      new Notice(messages[state] ?? `ObsidianApiSync state: ${state}`);
-    });
   }
 
-  onunload(): void {
-    this.wsClient.disconnect();
+  // ─── WebSocket Callbacks ────────────────────────────────────────────────────
+
+  private setupWsCallbacks() {
+    this.wsClient.onFileChanged = async (payload) => {
+      if (this.settings.syncMode !== 'server') return;
+      const file = this.app.vault.getAbstractFileByPath(payload.path);
+
+      if (file instanceof TFile) {
+        const currentContent = await this.app.vault.read(file);
+        const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
+        const normalizedRemote = payload.content.replace(/\r\n/g, '\n');
+        if (normalizedLocal !== normalizedRemote) {
+          if (this.modifyDebounceTimers.has(file.path)) {
+            clearTimeout(this.modifyDebounceTimers.get(file.path)!);
+            this.modifyDebounceTimers.delete(file.path);
+          }
+          this.remoteChangeLocks.set(file.path, Date.now() + 800);
+          try {
+            await this.app.vault.modify(file, payload.content);
+          } catch (err) {
+            console.error('[ObsidianApiSync] modify failed', err);
+          }
+        }
+      } else if (!file) {
+        try {
+          await this.ensureFolderExists(payload.path);
+          await this.app.vault.create(payload.path, payload.content);
+        } catch (err) {
+          console.error('[ObsidianApiSync] Failed to create file:', err);
+        }
+      }
+    };
+
+    this.wsClient.onFolderCreated = async (payload) => {
+      if (this.settings.syncMode !== 'server') return;
+      const folder = this.app.vault.getAbstractFileByPath(payload.path);
+      if (!folder) {
+        this.remoteChangeLocks.set(payload.path, Date.now() + 800);
+        await this.ensureFolderExists(payload.path);
+      }
+    };
+
+    this.wsClient.onFileDeleted = async (payload) => {
+      if (this.settings.syncMode !== 'server') return;
+      const file = this.app.vault.getAbstractFileByPath(payload.path);
+      if (file) {
+        try {
+          await this.app.vault.trash(file, false);
+        } catch (err) {
+          console.error('[ObsidianApiSync] Failed to process remote delete:', err);
+        }
+      }
+    };
+
+    this.wsClient.onFileRenamed = async (payload) => {
+      if (this.settings.syncMode !== 'server') return;
+      const file = this.app.vault.getAbstractFileByPath(payload.old_path);
+      if (file) {
+        try {
+          await this.ensureFolderExists(payload.new_path);
+          await this.app.vault.rename(file, payload.new_path);
+        } catch (err) {
+          console.error('[ObsidianApiSync] Failed to process remote rename:', err);
+        }
+      }
+    };
+
+    this.wsClient.onStateChange = (state: WsState) => {
+      if (this.settings.syncMode === 'server') {
+        this.updateStatusBar(state);
+      }
+    };
+
+    this.wsClient.onConnected = (clientId: string) => {
+      if (this.settings.syncMode === 'server') {
+        this.pullAllFiles();
+      }
+    };
+
+    this.wsClient.onError = (payload) => {
+      new Notice(`⚠️ ObsidianApiSync error: ${payload.message}`);
+    };
   }
 
-  // ─── Public Methods ─────────────────────────────────────────────────────────
+  // ─── Helpers ────────────────────────────────────────────────────────────────
 
   connectWs(): void {
-    this.wsClient.connect(this.settings.serverUrl, this.settings.apiToken);
+    if (this.settings.syncMode === 'server') {
+      this.wsClient.connect(this.settings.serverUrl, this.settings.apiToken);
+    }
   }
 
   async pullAllFiles(): Promise<void> {
-    if (!this.settings.serverUrl || !this.settings.apiToken) return;
-    
+    if (this.settings.syncMode !== 'server' || !this.settings.serverUrl) return;
     new Notice('ObsidianApiSync: Syncing files from server...');
     try {
       const listResp = await requestUrl({
@@ -262,9 +326,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const localFile = this.app.vault.getAbstractFileByPath(path);
         if (localFile instanceof TFile) {
           const localContent = await this.app.vault.read(localFile);
-          const normalizedLocal = localContent.replace(/\r\n/g, '\n');
-          const normalizedRemote = remoteContent.replace(/\r\n/g, '\n');
-          if (normalizedLocal !== normalizedRemote) {
+          if (localContent.replace(/\r\n/g, '\n') !== remoteContent.replace(/\r\n/g, '\n')) {
             if (this.modifyDebounceTimers.has(localFile.path)) {
               clearTimeout(this.modifyDebounceTimers.get(localFile.path)!);
               this.modifyDebounceTimers.delete(localFile.path);
@@ -287,21 +349,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         new Notice('ObsidianApiSync Complete: Vault is up to date.');
       }
     } catch (err) {
-      console.error('[ObsidianApiSync] Pull failed:', err);
-      new Notice('ObsidianApiSync Failed. Check console.');
+      new Notice('ObsidianApiSync Pull Failed.');
     }
   }
 
   async httpFallbackWrite(file: TFile): Promise<void> {
     try {
       const content = await this.app.vault.read(file);
-
-      // Encode the file path so it's safe in a URL segment
-      const encodedPath = file.path
-        .split('/')
-        .map((segment) => encodeURIComponent(segment))
-        .join('/');
-
+      const encodedPath = file.path.split('/').map((s) => encodeURIComponent(s)).join('/');
       await requestUrl({
         url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/${encodedPath}`,
         method: 'POST',
@@ -311,44 +366,17 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         },
         body: content,
       });
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : String(err);
-      new Notice(`⚠️ ObsidianApiSync HTTP fallback failed: ${message}`);
-      console.error('[ObsidianApiSync] HTTP fallback error:', err);
-    }
+    } catch (err) {}
   }
-
-  // ─── Settings Persistence ────────────────────────────────────────────────────
-
-  async loadSettings(): Promise<void> {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      (await this.loadData()) as Partial<ObsidianApiSyncSettings>
-    );
-  }
-
-  async saveSettings(): Promise<void> {
-    await this.saveData(this.settings);
-  }
-
-  // ─── Private Helpers ─────────────────────────────────────────────────────────
 
   private async ensureFolderExists(filePath: string): Promise<void> {
     const parts = filePath.split('/');
-    parts.pop(); // remove filename
+    parts.pop();
     let currentPath = '';
-    
     for (const part of parts) {
       currentPath = currentPath === '' ? part : `${currentPath}/${part}`;
-      const folder = this.app.vault.getAbstractFileByPath(currentPath);
-      if (!folder) {
-        try {
-          await this.app.vault.createFolder(currentPath);
-        } catch (err) {
-          // Ignore if it was created concurrently
-        }
+      if (!this.app.vault.getAbstractFileByPath(currentPath)) {
+        try { await this.app.vault.createFolder(currentPath); } catch (err) {}
       }
     }
   }
