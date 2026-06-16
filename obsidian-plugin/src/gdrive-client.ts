@@ -2,7 +2,7 @@ import { requestUrl, Notice, Modal, App } from 'obsidian';
 
 // A generic Client ID must be of type "Desktop app" or "TVs and Limited Input devices"
 // to use the Device Authorization Grant. Web Application types will fail.
-const GDRIVE_CLIENT_ID = "YOUR_DESKTOP_CLIENT_ID.apps.googleusercontent.com"; // User must replace this or we inject at build time
+const GDRIVE_CLIENT_ID = "688466971657-jokujacgd326ct0m7smhoamhm1f47pji.apps.googleusercontent.com";
 
 export class GDriveClient {
   private plugin: any;
