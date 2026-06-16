@@ -1,7 +1,7 @@
 {
   "name": "obsidian-api-sync",
-  "version": "1.4.0",
-  "description": "Remote vault sync via FastAPI and WebSockets",
+  "version": "1.6.0",
+  "description": "Bi-directional real-time and Serverless Google Drive vault sync for Obsidian.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

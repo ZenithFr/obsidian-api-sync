@@ -1,7 +1,7 @@
 {
   "id": "obsidian-api-sync",
   "name": "Obsidian API Sync",
-  "version": "1.4.0",
+  "version": "1.6.0",
   "minAppVersion": "1.4.0",
   "description": "Real-time bidirectional vault sync with the API server. Enables AI agents and humans to read/write notes simultaneously.",
   "author": "Obsidian API Sync",
