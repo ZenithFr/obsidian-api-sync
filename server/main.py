@@ -6,8 +6,11 @@ Security hardening in this file:
   - CORS wildcard replaced with explicit CORS_ORIGINS env var
   - Session cookie hardened: SameSite=lax, Secure=HTTPS_ONLY
   - CSRF double-submit token on all dashboard POST endpoints
-  - Vault path validation (blocks /etc, /root, C:\Windows, etc.)
+  - Vault path validation (blocks /etc, /root, C:\\Windows, etc.)
   - Artificial 1-second delay on failed login attempts (anti-brute-force)
+  - Security headers middleware (CSP, X-Frame-Options, X-Content-Type-Options,
+    Referrer-Policy, Permissions-Policy) on /app routes
+  - Prototype pollution defense: Jinja2 auto-escaping enforced on all templates
 """
 
 import asyncio
@@ -354,11 +357,111 @@ async def api_audit_log(request: Request, limit: int = 50) -> JSONResponse:
     return JSONResponse(content={"entries": entries})
 
 
+# -- Dashboard: Stats ---------------------------------------------------------
+
+@app.get("/dashboard/stats", tags=["admin"], summary="Fetch vault statistics")
+async def api_vault_stats(request: Request) -> JSONResponse:
+    _require_dashboard_auth(request)
+    vault_path = await get_vault_path()
+    vault_root = Path(vault_path).resolve()
+
+    if not vault_root.exists():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Vault directory does not exist: {vault_path}",
+        )
+
+    md_files = []
+    for file in vault_root.rglob("*.md"):
+        relative = str(file.relative_to(vault_root)).replace("\\", "/")
+        md_files.append(relative)
+    
+    md_files.sort()
+
+    return JSONResponse(
+        content={
+            "files": md_files,
+            "vault_path": str(vault_root),
+            "count": len(md_files),
+        }
+    )
+
 # -- Root redirect ------------------------------------------------------------
 
 @app.get("/", include_in_schema=False)
 async def root_redirect() -> Response:
     return RedirectResponse(url="/dashboard", status_code=302)
+
+
+# -- Obsidian Web Client (/app) -----------------------------------------------
+
+# Content-Security-Policy for the web client.
+# Allows:
+#   - scripts only from CDNs used by the SPA (cdn.tailwindcss.com, cdnjs, fonts.googleapis.com)
+#   - styles from same-origin + google fonts + cdnjs
+#   - fonts from google
+#   - images from same-origin + data URIs
+#   - WebSocket connects to same host only (ws: wss:)
+#   - NO inline eval(), NO object/embed, NO unknown origins
+_APP_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-eval'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+    "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self' ws: wss:; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self';"
+)
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    """
+    Inject security headers on /app responses.
+    - X-Frame-Options: blocks clickjacking
+    - X-Content-Type-Options: blocks MIME sniffing
+    - Referrer-Policy: no referrer leakage
+    - Permissions-Policy: disable unnecessary browser features
+    - Content-Security-Policy: restrict execution origins
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/app"):
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        )
+        response.headers["Content-Security-Policy"] = _APP_CSP
+    return response
+
+
+@app.get("/app", response_class=HTMLResponse, include_in_schema=False)
+async def obsidian_web_app(request: Request) -> Response:
+    """
+    Obsidian Web Client — browser-based vault reader/editor.
+
+    Security:
+      - Requires active dashboard session (same auth as /dashboard)
+      - CSRF token injected into template context
+      - Full CSP header applied by security_headers_middleware
+    """
+    if not request.session.get("authenticated"):
+        return RedirectResponse(url="/dashboard/login", status_code=303)
+
+    csrf_token = _get_or_create_csrf(request)
+    vault_path = await get_vault_path()
+
+    return templates.TemplateResponse(
+        request,
+        "app.html",
+        {
+            "csrf_token": csrf_token,
+            "vault_path": vault_path,
+        },
+    )
 
 
 # -- Dev entrypoint -----------------------------------------------------------

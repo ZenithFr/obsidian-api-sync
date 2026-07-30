@@ -2,11 +2,12 @@
 server/.venv/
 server/__pycache__/
 server/routers/__pycache__/
-server/*.pyc
-server/*.pyo
-server/hermes.db
-server/hermes.db-shm
-server/hermes.db-wal
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.db-shm
+*.db-wal
 
 # === Secrets ===
 server/.env
@@ -15,7 +16,18 @@ server/.env
 server/vault/
 
 # === Node / Obsidian Plugin ===
+node_modules/
 obsidian-plugin/node_modules/
+package-lock.json
+package.json
+
+# === Scratch / Test scripts ===
+puppeteer_test*.js
+test_*.js
+test_*.py
+extract_js.py
+fix_app_html.py
+update_css.py
 
 # === Compiled plugin output (users build locally) ===
 obsidian-plugin/main.js

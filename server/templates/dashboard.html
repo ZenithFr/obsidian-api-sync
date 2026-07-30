@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Obsidian API Sync{% if view == 'dashboard' %} — Dashboard{% else %} — Login{% endif %}</title>
 
+  <!-- Google Fonts: Inter + JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
   <!-- Tailwind CSS Play CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -12,160 +17,289 @@
       darkMode: 'class',
       theme: {
         extend: {
-          fontFamily: { 
-            sans: ['ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Roboto', '"Helvetica Neue"', 'Arial', '"Noto Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', '"SF Mono"', 'Menlo', 'Consolas', 'monospace'],
           },
           colors: {
-            primary: '#7c3aed',
-            'primary-60': '#a78bfa',
-            'primary-90': '#ede9fe',
-            secondary: '#eeeeee',
-            tertiary: '#1f1f1f',
-            neutral: '#0f0f0f',
-            surface: '#161616',
-            'surface-2': '#1f1f1f',
+            primary: '#a78bfa',
+            accent: '#7c3aed',
+            background: '#1f1f1f',
+            surface: '#262626',
             'on-surface': '#eeeeee',
-            muted: '#b8b8b8',
+            muted: '#dadada',
+            'on-primary': '#ffffff',
             border: '#404040',
-            'border-soft': '#e5e5e5',
             success: '#22c55e',
             error: '#ef4444',
           },
           borderRadius: {
-            none: '0px',
-            sm: '4px',
-            md: '8px',
-            lg: '12px',
-            xl: '16px',
-            full: '9999px',
+            'sm': '2px',
+            DEFAULT: '6px',
+            'md': '6px',
+            'lg': '12px',
+            'xl': '20px',
+            'pill': '9999px',
+            'full': '9999px',
           },
-          spacing: {
-            'xs': '6px',
-            'sm': '14px',
-            'md': '24px',
-            'lg': '46px',
-            'xl': '96px',
-          },
-          fontSize: {
-            'headline-display': ['60px', { lineHeight: '60px', fontWeight: '600', letterSpacing: '-1.2px' }],
-            'headline-lg': ['48px', { lineHeight: '60px', fontWeight: '600', letterSpacing: '-1.2px' }],
-            'headline-md': ['38px', { lineHeight: '46px', fontWeight: '600' }],
-            'headline-sm': ['30px', { lineHeight: '36px', fontWeight: '600' }],
-            'body-xl': ['24px', { lineHeight: '36px', fontWeight: '400' }],
-            'body-lg': ['20px', { lineHeight: '32px', fontWeight: '400' }],
-            'body-md': ['16px', { lineHeight: '24px', fontWeight: '400' }],
-            'body-sm': ['14px', { lineHeight: '20px', fontWeight: '400' }],
-            'label-lg': ['20px', { lineHeight: '24px', fontWeight: '500' }],
-            'label-md': ['16px', { lineHeight: '24px', fontWeight: '500' }],
-            'label-sm': ['14px', { lineHeight: '20px', fontWeight: '500' }],
-            'caption': ['12px', { lineHeight: '16px', fontWeight: '500', letterSpacing: '0.02em' }],
-          }
         },
       },
     };
   </script>
 
+  <!-- ── Custom Animations & Styles ── -->
+  <style>
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #404040; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #a78bfa; }
+
+    /* Keyframes */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes slideInRight {
+      from { opacity: 0; transform: translateX(24px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes slideDown {
+      from { opacity: 0; max-height: 0; }
+      to   { opacity: 1; max-height: 600px; }
+    }
+    @keyframes breathe {
+      0%, 100% { opacity: 0.35; transform: scale(0.8); }
+      50%      { opacity: 1;    transform: scale(1); }
+    }
+    @keyframes shimmerLine {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    @keyframes meshFloat {
+      0%   { transform: translate(0, 0) scale(1); }
+      33%  { transform: translate(30px, -25px) scale(1.05); }
+      66%  { transform: translate(-20px, 18px) scale(0.96); }
+      100% { transform: translate(0, 0) scale(1); }
+    }
+    @keyframes pulse-ring {
+      0%   { transform: scale(1); opacity: 0.5; }
+      100% { transform: scale(2.8); opacity: 0; }
+    }
+    @keyframes logoGlow {
+      0%, 100% { filter: drop-shadow(0 0 12px rgba(167,139,250,0.2)); }
+      50%      { filter: drop-shadow(0 0 22px rgba(167,139,250,0.35)); }
+    }
+
+    /* Utility animation classes */
+    .animate-fadeInUp { animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) both; }
+    .animate-fadeIn   { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) both; }
+
+    /* Stagger children */
+    .stagger > * { animation: fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) both; }
+    .stagger > :nth-child(1) { animation-delay: 0ms; }
+    .stagger > :nth-child(2) { animation-delay: 80ms; }
+    .stagger > :nth-child(3) { animation-delay: 150ms; }
+    .stagger > :nth-child(4) { animation-delay: 220ms; }
+
+    /* Button shimmer on hover */
+    .btn-shimmer { position: relative; overflow: hidden; }
+    .btn-shimmer::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+      background-size: 200% 100%;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .btn-shimmer:hover::after {
+      opacity: 1;
+      animation: shimmerLine 0.8s linear;
+    }
+
+    /* Tab indicator transition */
+    #tab-indicator {
+      transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                  width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Token reveal slide-down */
+    .token-reveal {
+      animation: slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+      overflow: hidden;
+    }
+  </style>
+
+  <!-- ── Tailwind Component Classes ── -->
   <style type="text/tailwindcss">
     @layer base {
       body {
-        @apply bg-neutral text-on-surface font-sans antialiased;
+        @apply bg-background text-on-surface font-sans antialiased;
       }
-      /* Remove default outline, add custom ring */
       *:focus-visible {
-        @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-neutral;
+        @apply outline-none ring-2 ring-primary/40 ring-offset-2 ring-offset-background;
+      }
+      ::selection {
+        @apply bg-primary/30 text-white;
       }
     }
     @layer components {
+      /* ── Card ── */
       .card {
-        @apply bg-surface-2 text-on-surface rounded-lg p-md border border-border shadow-[inset_0_1px_0_0_rgba(229,229,229,0.05)];
+        @apply bg-surface text-on-surface rounded-lg p-6 border border-border/50
+               transition-all duration-300;
+        box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.04),
+                    0 1px 3px 0 rgba(0,0,0,0.1);
       }
+      .card:hover {
+        border-color: rgba(167, 139, 250, 0.12);
+        box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.04),
+                    0 0 0 1px rgba(167, 139, 250, 0.06),
+                    0 10px 30px -8px rgba(124, 58, 237, 0.1);
+        transform: translateY(-1px);
+      }
+
+      /* ── Inputs ── */
       .input {
-        @apply bg-surface text-on-surface rounded-md px-[16px] border border-border 
-               h-[48px] text-body-md placeholder-muted focus:border-primary transition-colors;
+        @apply bg-background text-on-surface rounded-md px-4 border border-border/70
+               h-12 text-sm placeholder-muted/50
+               transition-all duration-200;
       }
+      .input:focus {
+        @apply border-primary/70;
+        box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.1);
+      }
+
+      /* ── Buttons ── */
       .btn-primary {
-        @apply bg-primary text-secondary text-label-lg rounded-md px-[32px] h-[60px] inline-flex items-center justify-center
-               hover:bg-primary-60 transition-colors shadow-sm;
+        @apply bg-accent text-white text-sm font-medium rounded-md px-7 h-12
+               inline-flex items-center justify-center gap-2
+               hover:bg-primary active:scale-[0.97]
+               transition-all duration-100 shadow-sm;
       }
       .btn-secondary {
-        @apply bg-transparent text-on-surface text-label-lg rounded-sm px-[32px] h-[60px] inline-flex items-center justify-center
-               border border-border hover:bg-surface transition-colors;
+        @apply bg-transparent text-on-surface text-sm font-medium rounded-md px-6 h-12
+               inline-flex items-center justify-center gap-2
+               border border-border/70 hover:bg-surface hover:border-primary/25
+               active:scale-[0.97] transition-all duration-100;
       }
       .btn-link {
-        @apply bg-transparent text-primary-60 text-label-lg rounded-none p-0 inline-flex items-center justify-center
-               hover:text-primary-90 transition-colors;
+        @apply bg-transparent text-primary text-sm font-medium p-0
+               inline-flex items-center justify-center
+               hover:text-primary/70 transition-colors duration-100;
       }
       .btn-danger {
-        @apply bg-transparent text-error text-label-md rounded-sm px-[16px] h-[40px] inline-flex items-center justify-center
-               border border-border hover:bg-surface hover:text-red-400 transition-colors;
+        @apply bg-transparent text-error text-sm font-medium rounded-md px-4 h-9
+               inline-flex items-center justify-center
+               border border-border/60 hover:bg-error/10 hover:border-error/30
+               active:scale-[0.97] transition-all duration-100;
       }
+
+      /* ── Chip / Badge ── */
       .chip {
-        @apply bg-[#2b2148] text-primary-90 text-caption rounded-full px-[10px] py-[6px] inline-flex items-center justify-center;
+        @apply text-primary text-xs font-medium rounded-pill px-3 py-1
+               inline-flex items-center justify-center;
+        background: rgba(124, 58, 237, 0.12);
       }
-      
+
+      /* ── Tabs ── */
       .tab-btn {
-        @apply text-label-md text-muted pb-xs border-b-2 border-transparent transition-colors hover:text-on-surface;
+        @apply text-sm font-medium text-muted pb-3.5 bg-transparent border-none cursor-pointer
+               transition-colors duration-100 hover:text-on-surface whitespace-nowrap;
       }
       .tab-btn.active {
-        @apply text-primary-60 border-primary-60;
+        @apply text-primary;
       }
-      
+
+      /* ── Data Table ── */
       .data-table th {
-        @apply text-left text-label-sm text-muted py-sm px-sm border-b border-border;
+        @apply text-left text-xs font-semibold text-muted uppercase tracking-wider
+               py-3 px-4 border-b border-border;
       }
       .data-table td {
-        @apply py-sm px-sm text-body-sm border-b border-border/50;
+        @apply py-3 px-4 text-sm border-b border-border/30;
       }
       .data-table tbody tr {
-        @apply hover:bg-surface transition-colors;
+        @apply transition-all duration-100;
+      }
+      .data-table tbody tr:hover {
+        background: rgba(167, 139, 250, 0.03);
       }
     }
   </style>
 </head>
-<body class="min-h-screen relative overflow-x-hidden selection:bg-primary/30 selection:text-white">
+
+<body class="min-h-screen relative overflow-x-hidden">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     BACKGROUND MESH — subtle animated purple gradient orbs
+     ═══════════════════════════════════════════════════════════════ -->
+<div class="fixed inset-0 z-0 pointer-events-none overflow-hidden" aria-hidden="true">
+  <div class="absolute rounded-full bg-primary/[0.05] blur-[120px]"
+       style="width:650px;height:650px;top:-8%;left:-6%;animation:meshFloat 28s ease-in-out infinite"></div>
+  <div class="absolute rounded-full bg-accent/[0.04] blur-[120px]"
+       style="width:550px;height:550px;bottom:-10%;right:-6%;animation:meshFloat 28s ease-in-out infinite reverse;animation-delay:-14s"></div>
+  <div class="absolute rounded-full bg-primary/[0.02] blur-[100px]"
+       style="width:400px;height:400px;top:50%;left:60%;animation:meshFloat 22s ease-in-out infinite;animation-delay:-7s"></div>
+</div>
+
 
 {% if view == 'login' %}
 <!-- ═══════════════════════════════════════════════════════════════
      LOGIN SCREEN
      ═══════════════════════════════════════════════════════════════ -->
-<div class="min-h-screen flex items-center justify-center px-md relative z-10">
-  <div class="w-full max-w-md">
+<div class="min-h-screen flex items-center justify-center px-6 relative z-10">
+  <div class="w-full max-w-sm">
 
-    <!-- Title -->
-    <div class="text-center mb-lg">
-      <img src="/static/assets/icon.png" alt="Obsidian API Sync Logo" class="w-24 h-24 mx-auto mb-4 rounded-xl shadow-lg">
-      <h1 class="text-headline-sm text-on-surface">Obsidian API Sync</h1>
-      <h2 class="text-label-lg text-primary-60 mt-xs">Dashboard</h2>
+    <!-- Logo + Title -->
+    <div class="text-center mb-10 animate-fadeInUp">
+      <img src="/static/assets/icon.png" alt="Obsidian API Sync Logo"
+           class="w-20 h-20 mx-auto mb-5 rounded-xl shadow-lg"
+           style="animation: logoGlow 4s ease-in-out infinite">
+      <h1 class="text-2xl font-semibold text-on-surface tracking-tight">Obsidian API Sync</h1>
+      <p class="text-sm font-medium text-primary mt-1.5">Dashboard</p>
     </div>
 
     <!-- Login Card -->
-    <div class="card">
-      <form method="POST" action="/dashboard/login" class="space-y-md">
+    <div class="card relative overflow-hidden animate-fadeInUp" style="animation-delay: 120ms">
+      <!-- Shimmer accent line -->
+      <div class="absolute top-0 left-0 right-0 h-[2px]"
+           style="background: linear-gradient(90deg, transparent, #a78bfa, #7c3aed, #a78bfa, transparent);
+                  background-size: 200% 100%;
+                  animation: shimmerLine 4s linear infinite"></div>
+
+      <form method="POST" action="/dashboard/login" class="space-y-5 pt-2">
 
         {% if error %}
-        <div class="bg-error/10 text-error border border-error/20 p-sm rounded-sm text-label-sm flex items-center gap-2">
-          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        <div class="bg-error/10 text-error border border-error/20 p-3 rounded-md text-sm flex items-center gap-2">
+          <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
           <span>{{ error }}</span>
         </div>
         {% endif %}
 
-        <div class="space-y-xs">
-          <label class="block text-label-sm text-muted">Admin Password</label>
-          <input
-            type="password"
-            name="password"
-            autofocus
-            autocomplete="current-password"
-            placeholder="Enter your password"
-            class="input w-full"
-          />
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-muted uppercase tracking-wider">Admin Password</label>
+          <input type="password" name="password" autofocus autocomplete="current-password"
+                 placeholder="Enter your password" class="input w-full" />
         </div>
 
-        <button type="submit" class="btn-primary w-full">
+        <button type="submit" class="btn-primary btn-shimmer w-full">
           Sign In
         </button>
       </form>
     </div>
+
+    <!-- Footer hint -->
+    <p class="text-center text-xs text-muted/50 mt-6 animate-fadeIn" style="animation-delay: 300ms">
+      Secured with rate limiting &amp; session encryption
+    </p>
 
   </div>
 </div>
@@ -175,29 +309,32 @@
      MAIN DASHBOARD
      ═══════════════════════════════════════════════════════════════ -->
 
-<!-- ── Top Navbar ─────────────────────────────────────────────── -->
-<nav class="sticky top-0 z-40 bg-neutral/80 backdrop-blur-md border-b border-border">
-  <div class="max-w-7xl mx-auto px-lg h-20 flex items-center justify-between">
+<!-- ── Top Navbar (Glassmorphism) ─────────────────────────────── -->
+<nav class="sticky top-0 z-40 border-b border-border/50" style="background: rgba(31,31,31,0.75); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">
+  <div class="max-w-7xl mx-auto px-6 lg:px-10 h-16 flex items-center justify-between">
 
-    <!-- Logo -->
-    <div class="flex items-center gap-sm">
-      <img src="/static/assets/icon.png" alt="Logo" class="w-10 h-10 rounded-md shadow-[inset_0_1px_0_0_rgba(255,255,255,0.2)]">
-      <div>
-        <span class="text-headline-sm leading-none block">Obsidian API Sync Dashboard</span>
-      </div>
+    <!-- Logo + Title -->
+    <div class="flex items-center gap-3">
+      <img src="/static/assets/icon.png" alt="Logo" class="w-8 h-8 rounded-md"
+           style="box-shadow: inset 0 1px 0 0 rgba(255,255,255,0.15), 0 2px 8px rgba(0,0,0,0.3)">
+      <span class="text-base font-semibold text-on-surface tracking-tight">Obsidian API Sync</span>
+      <span class="hidden sm:inline text-xs font-medium text-muted bg-surface rounded-pill px-2.5 py-0.5 border border-border/40">Dashboard</span>
     </div>
 
     <!-- Status + Logout -->
-    <div class="flex items-center gap-md">
-      <div class="flex items-center gap-xs">
-        <span class="relative flex h-3 w-3">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-60 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+    <div class="flex items-center gap-5">
+      <div class="flex items-center gap-2">
+        <span class="relative flex h-2.5 w-2.5">
+          <span class="absolute inline-flex h-full w-full rounded-full bg-primary"
+                style="animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.2, 1) infinite"></span>
+          <span class="relative inline-flex rounded-full h-2.5 w-2.5"
+                style="background: #a78bfa; animation: breathe 3s ease-in-out infinite"></span>
         </span>
-        <span class="text-label-sm text-muted">System Active</span>
+        <span class="text-xs font-medium text-muted">System Active</span>
       </div>
+      <div class="w-px h-5 bg-border/40"></div>
       <form method="POST" action="/dashboard/logout">
-        <button type="submit" class="text-label-sm text-muted hover:text-on-surface transition-colors">
+        <button type="submit" class="text-xs font-medium text-muted hover:text-on-surface transition-colors duration-100">
           Sign out
         </button>
       </form>
@@ -206,117 +343,119 @@
 </nav>
 
 <!-- ── Tab Bar ────────────────────────────────────────────────── -->
-<div class="max-w-7xl mx-auto px-lg pt-lg relative z-10 border-b border-border mb-lg">
-  <div class="flex gap-lg">
-    <button onclick="switchTab('vault')"   id="tab-vault"   class="tab-btn active">Vault Directory</button>
-    <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">Access Tokens</button>
-    <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">Client Connection</button>
+<div class="max-w-7xl mx-auto px-6 lg:px-10 pt-6 relative z-10 border-b border-border/40 mb-8">
+  <div class="relative flex gap-6 sm:gap-8" id="tab-bar">
+    <button onclick="switchTab('vault')"   id="tab-vault"   class="tab-btn active">Vault</button>
+    <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">Tokens</button>
+    <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">Connect</button>
     <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">Audit Log</button>
+    <!-- Animated sliding indicator -->
+    <div id="tab-indicator" class="absolute bottom-0 h-[2px] rounded-full bg-primary"></div>
   </div>
 </div>
 
 <!-- ── Tab Panels ─────────────────────────────────────────────── -->
-<main class="max-w-7xl mx-auto px-lg pb-xl relative z-10 space-y-lg">
+<main class="max-w-7xl mx-auto px-6 lg:px-10 pb-20 relative z-10">
 
   <!-- ════════════════ TAB: VAULT ════════════════ -->
-  <div id="panel-vault" class="tab-panel space-y-lg">
+  <div id="panel-vault" class="tab-panel stagger">
 
-    <div class="card flex flex-col gap-md">
-      <div class="flex items-start justify-between">
+    <div class="card flex flex-col gap-5">
+      <div class="flex items-start justify-between gap-4">
         <div>
-          <h2 class="text-headline-md">Vault Configuration</h2>
-          <p class="text-body-md text-muted mt-xs">The absolute path to your markdown note collection.</p>
+          <h2 class="text-xl font-semibold text-on-surface">Vault Configuration</h2>
+          <p class="text-sm text-muted mt-1">The absolute path to your markdown note collection.</p>
         </div>
-        <div id="file-count-badge" class="hidden text-right">
-          <div class="text-headline-lg text-primary-60 leading-none" id="file-count-num">—</div>
-          <div class="text-label-sm text-muted mt-1">Indexed Files</div>
+        <div id="file-count-badge" class="hidden text-right flex-shrink-0">
+          <div class="text-3xl font-bold text-primary leading-none" id="file-count-num">—</div>
+          <div class="text-xs font-medium text-muted mt-1">Indexed Files</div>
         </div>
       </div>
 
       <!-- Current path display -->
-      <div class="bg-surface rounded-md p-sm border border-border">
-        <div class="text-label-sm text-muted mb-1">Current Directory Path</div>
-        <div class="text-body-lg font-mono break-all text-primary-90" id="current-vault-path">{{ vault_path }}</div>
+      <div class="bg-background rounded-lg p-4 border border-border/40">
+        <div class="text-xs font-medium text-muted uppercase tracking-wider mb-1.5">Current Directory Path</div>
+        <div class="text-base font-mono break-all text-primary" id="current-vault-path">{{ vault_path }}</div>
       </div>
 
       <!-- Update path form -->
-      <div class="flex flex-col sm:flex-row gap-sm items-end">
-        <div class="flex-1 w-full space-y-xs">
-          <label class="block text-label-sm text-muted">Update Path</label>
-          <input
-            id="vault-path-input"
-            type="text"
-            placeholder="/absolute/path/to/vault"
-            class="input w-full font-mono text-body-sm"
-          />
+      <div class="flex flex-col sm:flex-row gap-3 items-end">
+        <div class="flex-1 w-full space-y-1.5">
+          <label class="block text-xs font-medium text-muted">Update Path</label>
+          <input id="vault-path-input" type="text" placeholder="/absolute/path/to/vault"
+                 class="input w-full font-mono text-xs" />
         </div>
-        <button onclick="updateVaultPath()" class="btn-secondary sm:w-auto w-full">
+        <button onclick="updateVaultPath()" class="btn-secondary sm:w-auto w-full btn-shimmer">
           Save Changes
         </button>
       </div>
     </div>
 
     <!-- Vault Stats -->
-    <div class="card flex flex-col gap-md">
+    <div class="card flex flex-col gap-4 mt-6">
       <div class="flex items-center justify-between">
-        <h2 class="text-headline-sm">Vault Statistics</h2>
+        <h2 class="text-lg font-semibold text-on-surface">Vault Statistics</h2>
         <button onclick="loadVaultStats()" class="btn-link">
-          Refresh Data
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Refresh
         </button>
       </div>
-      <div id="vault-stats-content" class="text-body-md text-muted">
-        <p>Click Refresh Data to analyze the vault. An active token is required.</p>
+      <div id="vault-stats-content" class="text-sm text-muted">
+        <p>Click Refresh to analyze the vault. An active token is required.</p>
       </div>
     </div>
   </div>
 
   <!-- ════════════════ TAB: TOKENS ════════════════ -->
-  <div id="panel-tokens" class="tab-panel space-y-lg hidden">
+  <div id="panel-tokens" class="tab-panel hidden stagger">
 
     <!-- Generate Token -->
-    <div class="card flex flex-col gap-md">
+    <div class="card flex flex-col gap-5">
       <div>
-        <h2 class="text-headline-md">Issue Access Token</h2>
-        <p class="text-body-md text-muted mt-xs">Create a new Bearer token for a client or AI agent.</p>
+        <h2 class="text-xl font-semibold text-on-surface">Issue Access Token</h2>
+        <p class="text-sm text-muted mt-1">Create a new Bearer token for a client or AI agent.</p>
       </div>
 
-      <div class="flex flex-col sm:flex-row gap-sm">
-        <input
-          id="token-label-input"
-          type="text"
-          placeholder="Token Label (e.g. 'MacBook Pro' or 'Hermes AI')"
-          class="input flex-1"
-        />
-        <button onclick="generateToken()" class="btn-primary">
-          Generate Token
+      <div class="flex flex-col sm:flex-row gap-3">
+        <input id="token-label-input" type="text"
+               placeholder="Token Label (e.g. 'MacBook Pro' or 'Hermes AI')"
+               class="input flex-1" />
+        <button onclick="generateToken()" class="btn-primary btn-shimmer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Generate
         </button>
       </div>
 
       <!-- New token reveal box -->
       <div id="new-token-box" class="hidden">
-        <div class="bg-surface border border-primary/30 p-md rounded-md mt-sm">
-          <div class="flex items-center gap-2 mb-sm text-primary-60">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-            <h3 class="text-label-lg">Token Generated</h3>
+        <div class="token-reveal bg-background border border-primary/20 p-5 rounded-lg">
+          <div class="flex items-center gap-2 mb-3 text-primary">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+            <h3 class="text-sm font-semibold">Token Generated</h3>
           </div>
-          <div class="flex flex-col sm:flex-row items-center gap-sm">
-            <div id="new-token-value" class="bg-neutral text-on-surface text-body-md font-mono p-sm rounded border border-border w-full break-all"></div>
-            <button onclick="copyNewToken()" id="copy-token-btn" class="btn-secondary shrink-0 w-full sm:w-auto !h-[48px]">
+          <div class="flex flex-col sm:flex-row items-stretch gap-3">
+            <div id="new-token-value"
+                 class="bg-surface text-on-surface text-xs font-mono p-3 rounded-md border border-border/40 flex-1 break-all select-all"></div>
+            <button onclick="copyNewToken()" id="copy-token-btn" class="btn-secondary shrink-0 !h-auto min-h-[42px]">
               Copy to Clipboard
             </button>
           </div>
-          <p class="text-caption text-error mt-sm">
-            Make sure to copy your token now. You won't be able to see it again!
+          <p class="text-xs text-error/80 mt-3 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01"/></svg>
+            Save this token now — it won't be shown again.
           </p>
         </div>
       </div>
     </div>
 
     <!-- Token List -->
-    <div class="card !p-0 overflow-hidden flex flex-col">
-      <div class="p-md border-b border-border flex items-center justify-between">
-        <h2 class="text-headline-sm">Active Tokens</h2>
-        <button onclick="loadTokens()" class="btn-link">Refresh List</button>
+    <div class="card !p-0 overflow-hidden mt-6">
+      <div class="p-5 border-b border-border/50 flex items-center justify-between">
+        <h2 class="text-lg font-semibold text-on-surface">Active Tokens</h2>
+        <button onclick="loadTokens()" class="btn-link">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Refresh
+        </button>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full data-table">
@@ -332,17 +471,17 @@
           </thead>
           <tbody id="tokens-tbody">
             {% for tok in tokens %}
-            <tr data-token-id="{{ tok.id }}" data-token-full="{{ tok.token }}">
-              <td class="text-muted">#{{ tok.id }}</td>
+            <tr data-token-id="{{ tok.id }}">
+              <td class="text-muted font-mono">#{{ tok.id }}</td>
               <td><span class="chip">{{ tok.label }}</span></td>
-              <td class="font-mono text-muted">{{ tok.token[:16] }}...</td>
-              <td>{{ tok.created }}</td>
-              <td>{{ tok.last_used or 'Never' }}</td>
+              <td class="font-mono text-muted text-xs">{{ tok.token_prefix }}...</td>
+              <td class="text-muted">{{ tok.created }}</td>
+              <td class="text-muted">{{ tok.last_used or 'Never' }}</td>
               <td class="text-right"><button onclick="revokeToken({{ tok.id }}, this)" class="btn-danger">Revoke</button></td>
             </tr>
             {% else %}
             <tr id="empty-tokens-row">
-              <td colspan="6" class="text-center text-muted py-lg">No active tokens found.</td>
+              <td colspan="6" class="text-center text-muted py-10">No active tokens found.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -352,19 +491,22 @@
   </div>
 
   <!-- ════════════════ TAB: CONNECT ════════════════ -->
-  <div id="panel-connect" class="tab-panel space-y-lg hidden">
+  <div id="panel-connect" class="tab-panel hidden stagger">
 
-    <div class="card flex flex-col gap-md">
+    <div class="card flex flex-col gap-5">
       <div>
-        <h2 class="text-headline-md">Client Connection</h2>
-        <p class="text-body-md text-muted mt-xs">Generate a Base64 configuration payload to instantly connect your Obsidian plugin.</p>
+        <h2 class="text-xl font-semibold text-on-surface">Client Connection</h2>
+        <p class="text-sm text-muted mt-1">Generate a Base64 configuration payload to instantly connect your Obsidian plugin.</p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-lg mt-sm">
-        <div class="space-y-md">
-          <div class="space-y-xs">
-            <label class="block text-label-sm text-muted">Select an existing token</label>
-            <select id="connect-token-select" onchange="updateConnectConfig()" class="input w-full appearance-none bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%23b8b8b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E')] bg-no-repeat bg-[position:right_12px_center]">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-1">
+        <!-- Left: Config Generator -->
+        <div class="space-y-4">
+          <div class="space-y-1.5">
+            <label class="block text-xs font-medium text-muted uppercase tracking-wider">Select an existing token</label>
+            <select id="connect-token-select" onchange="updateConnectConfig()"
+                    class="input w-full appearance-none cursor-pointer pr-10"
+                    style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%23dadada%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 12px center;">
               <option value="">Choose token...</option>
               {% for tok in tokens %}
               <option value="{{ tok.token }}" data-label="{{ tok.label }}">#{{ tok.id }} - {{ tok.label }}</option>
@@ -372,34 +514,43 @@
             </select>
           </div>
 
-          <div class="space-y-xs">
-            <label class="block text-label-sm text-muted">Or manually paste token</label>
-            <input id="connect-token-manual" type="text" placeholder="ey..." oninput="updateConnectConfig()" class="input w-full font-mono text-body-sm" />
+          <div class="space-y-1.5">
+            <label class="block text-xs font-medium text-muted uppercase tracking-wider">Or manually paste token</label>
+            <input id="connect-token-manual" type="text" placeholder="ey..." oninput="updateConnectConfig()"
+                   class="input w-full font-mono text-xs" />
           </div>
 
-          <div class="space-y-xs">
-            <label class="block text-label-sm text-muted">Encoded Configuration</label>
-            <textarea id="connect-config-output" readonly rows="3" class="input w-full resize-none h-auto py-sm font-mono text-body-sm bg-neutral" placeholder="Select or paste a token to generate..."></textarea>
+          <div class="space-y-1.5">
+            <label class="block text-xs font-medium text-muted uppercase tracking-wider">Encoded Configuration</label>
+            <textarea id="connect-config-output" readonly rows="3"
+                      class="input w-full resize-none h-auto py-3 font-mono text-xs bg-background"
+                      placeholder="Select or paste a token to generate..."></textarea>
           </div>
 
-          <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary w-full">
+          <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary btn-shimmer w-full">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
             <span id="copy-config-label">Copy Payload</span>
           </button>
         </div>
 
-        <div class="bg-neutral rounded-md p-md border border-border flex flex-col h-full">
-          <div class="flex items-start justify-between mb-sm">
-            <h3 class="text-label-lg text-primary-60">Quick Setup Instructions</h3>
-            <button onclick="navigator.clipboard.writeText('https://github.com/ZenithFr/obsidian-api-sync').then(() => { const s = this.querySelector('.btn-text'); const old = s.textContent; s.textContent = 'Copied!'; setTimeout(() => s.textContent = old, 2000); })" class="btn-primary !h-auto !py-2 !px-4 flex flex-col items-center">
-              <span class="text-label-md btn-text">GitHub</span>
-              <span class="text-[10px] font-normal opacity-80 mt-0.5">Copy Repo Link</span>
+        <!-- Right: Instructions -->
+        <div class="bg-background rounded-lg p-5 border border-border/40 flex flex-col h-full">
+          <div class="flex items-start justify-between mb-4">
+            <h3 class="text-sm font-semibold text-primary flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Quick Setup
+            </h3>
+            <button onclick="navigator.clipboard.writeText('https://github.com/ZenithFr/obsidian-api-sync').then(() => { const s = this.querySelector('.btn-text'); const old = s.textContent; s.textContent = 'Copied!'; setTimeout(() => s.textContent = old, 2000); })"
+                    class="btn-primary !h-auto !py-1.5 !px-3 !text-xs flex flex-col items-center">
+              <span class="btn-text">GitHub</span>
+              <span class="text-[9px] font-normal opacity-70 mt-0.5">Copy Repo Link</span>
             </button>
           </div>
-          <ol class="space-y-sm text-body-md text-muted list-decimal list-inside flex-1">
-            <li>Install the <strong>BRAT</strong> plugin from the Obsidian community list.</li>
-            <li>In BRAT settings, add Beta plugin: <span class="text-on-surface font-medium text-caption">ZenithFr/obsidian-api-sync</span></li>
-            <li>Enable the <strong>Obsidian API Sync</strong> plugin and open its settings.</li>
-            <li>Click the <span class="text-on-surface font-medium">Quick Import</span> button and paste the copied payload.</li>
+          <ol class="space-y-3 text-sm text-muted list-decimal list-inside flex-1">
+            <li>Install the <strong class="text-on-surface">BRAT</strong> plugin from the Obsidian community list.</li>
+            <li>In BRAT settings, add Beta plugin: <code class="text-on-surface text-xs font-mono bg-surface px-1.5 py-0.5 rounded">ZenithFr/obsidian-api-sync</code></li>
+            <li>Enable the <strong class="text-on-surface">Obsidian API Sync</strong> plugin and open its settings.</li>
+            <li>Click <strong class="text-on-surface">Quick Import</strong> and paste the copied payload.</li>
           </ol>
         </div>
       </div>
@@ -407,18 +558,18 @@
   </div>
 
   <!-- ════════════════ TAB: AUDIT LOG ════════════════ -->
-  <div id="panel-audit" class="tab-panel space-y-lg hidden">
-    <div class="card !p-0 overflow-hidden flex flex-col">
-      <div class="p-md border-b border-border flex items-center justify-between flex-wrap gap-4">
+  <div id="panel-audit" class="tab-panel hidden stagger">
+    <div class="card !p-0 overflow-hidden">
+      <div class="p-5 border-b border-border/50 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 class="text-headline-sm">Event Stream</h2>
-          <p class="text-body-sm text-muted mt-xs">Real-time audit log of all API and WebSocket activity.</p>
+          <h2 class="text-lg font-semibold text-on-surface">Event Stream</h2>
+          <p class="text-xs text-muted mt-0.5">Real-time audit log of all API and WebSocket activity.</p>
         </div>
-        <div class="flex items-center gap-md">
-          <span id="audit-last-refresh" class="text-caption text-muted"></span>
-          <button onclick="clearAuditView()" class="btn-link">Clear Log</button>
-          <button onclick="toggleAuditRefresh()" id="audit-pause-btn" class="btn-secondary !h-[40px] !px-4 !text-label-md">
-            <span id="audit-pause-label">Pause Stream</span>
+        <div class="flex items-center gap-4">
+          <span id="audit-last-refresh" class="text-xs text-muted/60"></span>
+          <button onclick="clearAuditView()" class="btn-link text-xs">Clear</button>
+          <button onclick="toggleAuditRefresh()" id="audit-pause-btn" class="btn-secondary !h-8 !px-3 !text-xs">
+            <span id="audit-pause-label">Pause</span>
           </button>
         </div>
       </div>
@@ -434,7 +585,12 @@
             </tr>
           </thead>
           <tbody id="audit-tbody">
-            <tr><td colspan="5" class="text-center text-muted py-lg">Initializing event stream...</td></tr>
+            <tr><td colspan="5" class="text-center text-muted py-10">
+              <div class="inline-flex items-center gap-2">
+                <svg class="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                Initializing event stream...
+              </div>
+            </td></tr>
           </tbody>
         </table>
       </div>
@@ -444,9 +600,10 @@
 </main>
 
 <!-- ── Toast Container ──────────────────────────────────────────── -->
-<div id="toast-container" class="fixed bottom-lg right-lg z-[100] space-y-sm pointer-events-none flex flex-col items-end"></div>
+<div id="toast-container" class="fixed bottom-6 right-6 z-[100] space-y-2 pointer-events-none flex flex-col items-end"></div>
 
 {% endif %}
+
 
 <!-- ═══════════════════════════════════════════════════════════════
      JAVASCRIPT LOGIC
@@ -455,46 +612,83 @@
 // CSRF token injected from server session (double-submit pattern)
 const CSRF_TOKEN = {{ csrf_token | tojson if csrf_token is defined else '""' }};
 
-// Remove the brutalist theme toggler completely. The system is dark by default.
+// Remove legacy theme keys
 localStorage.removeItem('obsidian-sync-theme');
 localStorage.removeItem('hermes-theme');
+
+/* ── Toast ────────────────────────────────────────────────────── */
 
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   if (!container) return;
 
-  const bg = type === 'error' ? 'bg-error/10 border-error/20 text-error' : 'bg-surface-2 border-border text-on-surface';
-  const icon = type === 'error' 
-    ? '<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
-    : '<svg class="w-5 h-5 shrink-0 text-primary-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+  const isError = type === 'error';
+  const bg = isError
+    ? 'bg-error/10 border-error/20 text-error'
+    : 'bg-surface border-border/50 text-on-surface';
+  const icon = isError
+    ? '<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
+    : '<svg class="w-4 h-4 shrink-0 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
 
   const el = document.createElement('div');
-  el.className = `pointer-events-auto border rounded-md p-sm shadow-lg flex items-center gap-sm text-body-sm transition-all duration-300 transform translate-y-4 opacity-0 ${bg}`;
+  el.className = `pointer-events-auto border rounded-lg p-3.5 flex items-center gap-2.5 text-sm font-medium
+                   transition-all duration-300 transform translate-x-8 opacity-0 ${bg}`;
+  el.style.boxShadow = '0 8px 30px -5px rgba(0,0,0,0.3)';
   el.innerHTML = `${icon} <span>${escapeHtml(message)}</span>`;
   container.appendChild(el);
 
-  // Animate in
   requestAnimationFrame(() => {
-    el.classList.remove('translate-y-4', 'opacity-0');
+    el.classList.remove('translate-x-8', 'opacity-0');
   });
 
-  // Animate out
   setTimeout(() => {
-    el.classList.add('opacity-0', 'scale-95');
+    el.classList.add('opacity-0', 'translate-x-4');
     setTimeout(() => el.remove(), 300);
   }, 4000);
 }
 
+
+/* ── Tabs ─────────────────────────────────────────────────────── */
+
 const TAB_IDS = ['vault', 'tokens', 'connect', 'audit'];
+
+function updateTabIndicator(name) {
+  const tab = document.getElementById(`tab-${name}`);
+  const indicator = document.getElementById('tab-indicator');
+  if (tab && indicator) {
+    indicator.style.left = tab.offsetLeft + 'px';
+    indicator.style.width = tab.offsetWidth + 'px';
+  }
+}
 
 function switchTab(name) {
   TAB_IDS.forEach(id => {
-    document.getElementById(`panel-${id}`).classList.toggle('hidden', id !== name);
-    document.getElementById(`tab-${id}`).classList.toggle('active', id === name);
+    const panel = document.getElementById(`panel-${id}`);
+    const tabBtn = document.getElementById(`tab-${id}`);
+    if (id === name) {
+      panel.classList.remove('hidden');
+      // Re-trigger stagger animation
+      panel.style.animation = 'none';
+      panel.offsetHeight; // reflow
+      panel.style.animation = '';
+      panel.querySelectorAll('.stagger > *').forEach((child, i) => {
+        child.style.animation = 'none';
+        child.offsetHeight;
+        child.style.animation = `fadeInUp 0.5s cubic-bezier(0.4,0,0.2,1) both`;
+        child.style.animationDelay = `${i * 80}ms`;
+      });
+    } else {
+      panel.classList.add('hidden');
+    }
+    tabBtn.classList.toggle('active', id === name);
   });
+  updateTabIndicator(name);
   if (name === 'audit') loadAuditLog();
   if (name === 'tokens') loadTokens();
 }
+
+
+/* ── Vault ────────────────────────────────────────────────────── */
 
 async function updateVaultPath() {
   const input = document.getElementById('vault-path-input');
@@ -516,13 +710,18 @@ async function updateVaultPath() {
 
 async function loadVaultStats() {
   const statsDiv = document.getElementById('vault-stats-content');
-  const firstTokenRow = document.querySelector('#tokens-tbody tr[data-token-full]');
-  const token = firstTokenRow ? firstTokenRow.dataset.tokenFull : null;
-  if (!token) { statsDiv.innerHTML = '<p class="text-error">Cannot fetch stats: No active tokens found.</p>'; return; }
-  
+
   try {
-    statsDiv.innerHTML = '<p class="animate-pulse">Analyzing vault contents...</p>';
-    const res = await fetch('/api/files', { headers: { 'Authorization': `Bearer ${token}` } });
+    statsDiv.innerHTML = `
+      <div class="flex items-center gap-2 text-sm text-muted">
+        <svg class="w-4 h-4 animate-spin text-primary" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        Analyzing vault contents...
+      </div>`;
+
+    const res = await fetch('/dashboard/stats');
     if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     const data = await res.json();
 
@@ -531,26 +730,34 @@ async function loadVaultStats() {
     badge.classList.remove('hidden');
 
     statsDiv.innerHTML = `
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-md">
-        <div class="bg-neutral p-md rounded-md border border-border">
-          <div class="text-headline-md text-primary-90">${data.count}</div>
-          <div class="text-label-sm text-muted mt-1">Markdown Files Found</div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div class="bg-background p-5 rounded-lg border border-border/40 relative overflow-hidden">
+          <div class="absolute inset-0 bg-gradient-to-br from-primary/[0.04] to-transparent pointer-events-none"></div>
+          <div class="relative">
+            <div class="text-3xl font-bold text-primary">${data.count}</div>
+            <div class="text-xs font-medium text-muted mt-1">Markdown Files Found</div>
+          </div>
         </div>
-        <div class="bg-neutral p-md rounded-md border border-border flex flex-col justify-center">
-          <div class="text-body-sm font-mono break-all text-on-surface">${data.vault_path}</div>
-          <div class="text-caption text-muted mt-2">Active Root Directory</div>
+        <div class="bg-background p-5 rounded-lg border border-border/40 flex flex-col justify-center">
+          <div class="text-xs font-mono break-all text-on-surface">${escapeHtml(data.vault_path)}</div>
+          <div class="text-xs text-muted mt-2">Active Root Directory</div>
         </div>
       </div>
       ${data.count > 0 ? `
-      <div class="mt-md pt-md border-t border-border">
-        <h3 class="text-label-lg mb-sm">Sample Files</h3>
-        <div class="flex flex-wrap gap-xs">
-          ${data.files.slice(0, 15).map(f => `<span class="bg-neutral border border-border text-muted text-caption px-2 py-1 rounded">${escapeHtml(f)}</span>`).join('')}
+      <div class="mt-5 pt-5 border-t border-border/30">
+        <h3 class="text-sm font-semibold text-on-surface mb-3">Sample Files</h3>
+        <div class="flex flex-wrap gap-1.5">
+          ${data.files.slice(0, 15).map(f => `<span class="bg-background border border-border/40 text-muted text-xs font-mono px-2 py-1 rounded">${escapeHtml(f)}</span>`).join('')}
         </div>
       </div>` : ''}
     `;
-  } catch (err) { statsDiv.innerHTML = `<p class="text-error">Analysis failed: ${err.message}</p>`; }
+  } catch (err) {
+    statsDiv.innerHTML = `<p class="text-error text-sm">Analysis failed: ${escapeHtml(err.message)}</p>`;
+  }
 }
+
+
+/* ── Tokens ───────────────────────────────────────────────────── */
 
 async function loadTokens() {
   try {
@@ -565,16 +772,16 @@ async function loadTokens() {
 function renderTokenTable(tokens) {
   const tbody = document.getElementById('tokens-tbody');
   if (tokens.length === 0) {
-    tbody.innerHTML = '<tr id="empty-tokens-row"><td colspan="6" class="text-center text-muted py-lg">No active tokens found.</td></tr>';
+    tbody.innerHTML = '<tr id="empty-tokens-row"><td colspan="6" class="text-center text-muted py-10">No active tokens found.</td></tr>';
     return;
   }
   tbody.innerHTML = tokens.map(tok => `
     <tr data-token-id="${tok.id}">
-      <td class="text-muted">#${tok.id}</td>
+      <td class="text-muted font-mono">#${tok.id}</td>
       <td><span class="chip">${escapeHtml(tok.label)}</span></td>
-      <td class="font-mono text-muted text-body-sm">${escapeHtml(tok.token_prefix || '????????')}••••••••••••••••••••••••</td>
-      <td class="text-muted text-body-sm">${tok.created}</td>
-      <td class="text-muted text-body-sm">${tok.last_used || 'Never'}</td>
+      <td class="font-mono text-muted text-xs">${escapeHtml(tok.token_prefix || '????????')}••••••••••••</td>
+      <td class="text-muted">${tok.created}</td>
+      <td class="text-muted">${tok.last_used || 'Never'}</td>
       <td class="text-right"><button onclick="revokeToken(${tok.id}, this)" class="btn-danger">Revoke</button></td>
     </tr>
   `).join('');
@@ -583,8 +790,6 @@ function renderTokenTable(tokens) {
 function updateConnectTokenSelect(tokens) {
   const sel = document.getElementById('connect-token-select');
   if (!sel) return;
-  // Note: raw token values are no longer stored server-side (hashed for security).
-  // The dropdown is kept for UX context only -- users must paste their token manually.
   sel.innerHTML = '<option value="">Paste your token below...</option>' +
     tokens.map(t => `<option value="" disabled>#${t.id} - ${escapeHtml(t.label)} (${escapeHtml(t.token_prefix || '?')}••••••••)</option>`).join('');
 }
@@ -622,24 +827,25 @@ function copyNewToken() {
   const val = document.getElementById('new-token-value').textContent;
   navigator.clipboard.writeText(val).then(() => {
     const btn = document.getElementById('copy-token-btn');
-    btn.textContent = 'Copied!';
-    btn.classList.add('bg-success/20', 'text-success', 'border-success/30');
+    const old = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    btn.classList.add('!border-success/40', '!text-success');
     setTimeout(() => {
-      btn.textContent = 'Copy to Clipboard';
-      btn.classList.remove('bg-success/20', 'text-success', 'border-success/30');
+      btn.textContent = old;
+      btn.classList.remove('!border-success/40', '!text-success');
     }, 2000);
   });
 }
+
+
+/* ── Connect ──────────────────────────────────────────────────── */
 
 function updateConnectConfig() {
   const sel = document.getElementById('connect-token-select');
   const man = document.getElementById('connect-token-manual');
   const out = document.getElementById('connect-config-output');
   const token = sel.value || man.value.trim();
-  if (!token) { 
-    out.value = ''; 
-    return; 
-  }
+  if (!token) { out.value = ''; return; }
   const config = { server: window.location.origin, token };
   out.value = btoa(JSON.stringify(config));
 }
@@ -648,24 +854,26 @@ function copyConnectConfig() {
   const out = document.getElementById('connect-config-output');
   if (!out.value) { showToast('Generate a payload first by selecting a token.', 'error'); return; }
   navigator.clipboard.writeText(out.value).then(() => {
-    const btn = document.getElementById('copy-config-btn');
     const label = document.getElementById('copy-config-label');
-    label.textContent = 'Copied!';
+    label.textContent = '✓ Copied!';
     setTimeout(() => label.textContent = 'Copy Payload', 2000);
   });
 }
+
+
+/* ── Audit Log ────────────────────────────────────────────────── */
 
 let auditRefreshInterval = null;
 let auditPaused = false;
 
 function methodStyle(m) {
-  const styles = { 
-    GET: 'text-primary-60 bg-primary/10 border border-primary/20', 
-    POST: 'text-success bg-success/10 border border-success/20', 
-    DELETE: 'text-error bg-error/10 border border-error/20', 
-    WS: 'text-on-surface bg-border border border-border' 
+  const styles = {
+    GET:    'text-primary bg-primary/10 border border-primary/15',
+    POST:   'text-success bg-success/10 border border-success/15',
+    DELETE: 'text-error bg-error/10 border border-error/15',
+    WS:     'text-muted bg-border/20 border border-border/40',
   };
-  return styles[m] || 'text-muted bg-surface border border-border';
+  return styles[m] || 'text-muted bg-surface border border-border/40';
 }
 
 async function loadAuditLog() {
@@ -675,59 +883,73 @@ async function loadAuditLog() {
     const data = await res.json();
     const tbody = document.getElementById('audit-tbody');
     if (!data.entries.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-lg">No events recorded yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-10">No events recorded yet.</td></tr>';
       return;
     }
     tbody.innerHTML = data.entries.map(e => `
       <tr>
-        <td class="text-muted font-mono text-caption">${e.ts}</td>
-        <td><span class="inline-flex items-center justify-center rounded px-2 py-0.5 text-caption font-medium ${methodStyle(e.method)}">${escapeHtml(e.method)}</span></td>
-        <td class="text-on-surface text-body-sm font-mono max-w-xs truncate" title="${e.path ? escapeHtml(e.path) : ''}">${e.path ? escapeHtml(e.path) : '—'}</td>
-        <td class="text-muted text-body-sm">${e.token_id != null ? `Token #${e.token_id}` : 'System'}</td>
-        <td class="text-muted text-body-sm">${escapeHtml(e.action)}</td>
+        <td class="text-muted font-mono text-xs whitespace-nowrap">${e.ts}</td>
+        <td><span class="inline-flex items-center justify-center rounded-md px-2 py-0.5 text-xs font-semibold ${methodStyle(e.method)}">${escapeHtml(e.method)}</span></td>
+        <td class="text-on-surface font-mono text-xs max-w-[200px] truncate" title="${e.path ? escapeHtml(e.path) : ''}">${e.path ? escapeHtml(e.path) : '<span class="text-muted">—</span>'}</td>
+        <td class="text-muted">${e.token_id != null ? `Token #${e.token_id}` : '<span class="text-muted/60">System</span>'}</td>
+        <td class="text-muted">${escapeHtml(e.action)}</td>
       </tr>
     `).join('');
-    
+
     const now = new Date();
-    document.getElementById('audit-last-refresh').textContent = `Last synced: ${now.toLocaleTimeString()}`;
+    document.getElementById('audit-last-refresh').textContent = `Synced ${now.toLocaleTimeString()}`;
   } catch (err) {
     // Silent fail for background refresh
   }
 }
 
 function clearAuditView() {
-  document.getElementById('audit-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-lg">Log cleared from view.</td></tr>';
+  document.getElementById('audit-tbody').innerHTML = '<tr><td colspan="5" class="text-center text-muted py-10">Log cleared.</td></tr>';
 }
 
 function toggleAuditRefresh() {
   auditPaused = !auditPaused;
   const label = document.getElementById('audit-pause-label');
   const btn = document.getElementById('audit-pause-btn');
-  
+
   if (auditPaused) {
     clearInterval(auditRefreshInterval);
-    label.textContent = 'Resume Stream';
-    btn.classList.add('border-primary-60', 'text-primary-60');
+    label.textContent = 'Resume';
+    btn.classList.add('!border-primary/50', '!text-primary');
   } else {
     startAuditRefresh();
-    label.textContent = 'Pause Stream';
-    btn.classList.remove('border-primary-60', 'text-primary-60');
+    label.textContent = 'Pause';
+    btn.classList.remove('!border-primary/50', '!text-primary');
   }
 }
 
 function startAuditRefresh() {
   if (auditRefreshInterval) clearInterval(auditRefreshInterval);
-  loadAuditLog(); // Initial load
-  auditRefreshInterval = setInterval(loadAuditLog, 5000); // Poll every 5s instead of 10s for snappier feel
+  loadAuditLog();
+  auditRefreshInterval = setInterval(loadAuditLog, 5000);
 }
+
+
+/* ── Utilities ────────────────────────────────────────────────── */
 
 function escapeHtml(str) {
   if (str == null) return '';
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+
+/* ── Init ─────────────────────────────────────────────────────── */
+
 {% if view == 'dashboard' %}
 document.addEventListener('DOMContentLoaded', () => {
+  // Set initial tab indicator position
+  requestAnimationFrame(() => updateTabIndicator('vault'));
+  // Handle window resize
+  window.addEventListener('resize', () => {
+    const active = document.querySelector('.tab-btn.active');
+    if (active) updateTabIndicator(active.id.replace('tab-', ''));
+  });
+  // Start audit refresh
   startAuditRefresh();
 });
 {% endif %}

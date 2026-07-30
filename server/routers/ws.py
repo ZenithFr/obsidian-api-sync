@@ -1,4 +1,4 @@
-﻿"""
+"""
 routers/ws.py -- WebSocket endpoint and connection manager for Obsidian API Sync.
 
 Provides real-time bidirectional sync between the server vault and any connected
@@ -109,7 +109,11 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
     Close code 4001 is sent when authentication fails.
     """
     # Auth
-    token_data = await verify_ws_token(token)
+    if not token and websocket.session.get("authenticated"):
+        token_data = {"id": None, "label": "dashboard-session"}
+    else:
+        token_data = await verify_ws_token(token)
+
     if token_data is None:
         await websocket.accept()
         await websocket.close(code=4001)

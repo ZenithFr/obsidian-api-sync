@@ -36,6 +36,11 @@ async def get_current_token(request: Request) -> dict[str, Any]:
     """
     authorization: str | None = request.headers.get("Authorization")
 
+    # If no Bearer token is provided but the user has an active dashboard session,
+    # allow access and return a dummy token row.
+    if not authorization and request.session.get("authenticated"):
+        return {"id": None, "label": "dashboard-session"}
+
     if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
