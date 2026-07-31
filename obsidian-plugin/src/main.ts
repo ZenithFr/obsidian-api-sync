@@ -11,6 +11,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   private statusBarItem!: HTMLElement;
   private modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private remoteChangeLocks: Map<string, number> = new Map();
+  private modifyVersions: Map<string, number> = new Map();
+  private localModificationTimes: Map<string, number> = new Map();
 
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -79,9 +81,15 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     }
   }
 
-  async uploadChunked(path: string, base64Content: string, isBinary: boolean): Promise<void> {
+  async uploadChunked(path: string, payloadStr: string, isBinary: boolean): Promise<void> {
     if (!this.settings.serverUrl || !this.settings.apiToken) return;
     const uploadId = (Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
+    
+    let base64Content = payloadStr;
+    if (!isBinary) {
+      base64Content = this.arrayBufferToBase64(new TextEncoder().encode(payloadStr));
+    }
+    
     const chunkSize = 2 * 1024 * 1024; // 2MB
     const totalChunks = Math.ceil(base64Content.length / chunkSize);
 
@@ -116,12 +124,22 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         body: JSON.stringify({
           upload_id: uploadId,
           path: path,
-          is_binary: isBinary
+          is_binary: isBinary,
+          total_chunks: totalChunks
         })
       });
       new Notice(`ObsidianApiSync: Finished uploading ${path}`);
     } catch (e) {
       this.showError(`Failed to upload ${path} in chunks`, e);
+      try {
+        await requestUrl({
+          url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/chunk/${uploadId}`,
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${this.settings.apiToken}` }
+        });
+      } catch (cancelErr) {
+        console.error("Failed to cancel upload:", cancelErr);
+      }
     }
   }
 
@@ -420,6 +438,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           clearTimeout(this.modifyDebounceTimers.get(path)!);
         }
 
+        const version = (this.modifyVersions.get(path) || 0) + 1;
+        this.modifyVersions.set(path, version);
+        this.localModificationTimes.set(path, Date.now());
+
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(path);
           try {
@@ -444,6 +466,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
                   return;
                 }
                 const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+                if (this.modifyVersions.get(path) !== version) return;
                 if (encrypted.contentStr.length > 2 * 1024 * 1024) {
                   await this.uploadChunked(path, encrypted.contentStr, encrypted.isBinary);
                 } else if (this.wsClient.getState() === WsState.CONNECTED) {
@@ -479,6 +502,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         }
 
         const currentContent = editor.getValue();
+        const version = (this.modifyVersions.get(file.path) || 0) + 1;
+        this.modifyVersions.set(file.path, version);
+        this.localModificationTimes.set(file.path, Date.now());
+
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
           if (currentContent.length > 133 * 1024 * 1024) {
@@ -486,6 +513,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             return;
           }
           const encrypted = await this.encryptPayloadIfNeeded(currentContent, false);
+          if (this.modifyVersions.get(file.path) !== version) return;
           if (encrypted.contentStr.length > 2 * 1024 * 1024) {
             await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
           } else {
@@ -511,6 +539,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           clearTimeout(this.modifyDebounceTimers.get(file.path)!);
         }
 
+        const version = (this.modifyVersions.get(file.path) || 0) + 1;
+        this.modifyVersions.set(file.path, version);
+        this.localModificationTimes.set(file.path, Date.now());
+
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
           const isBinary = this.isBinaryFile(file.path);
@@ -526,6 +558,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             return;
           }
           const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+          if (this.modifyVersions.get(file.path) !== version) return;
           if (encrypted.contentStr.length > 2 * 1024 * 1024) {
             await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
           } else {
@@ -547,6 +580,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         if (lockExpiry && Date.now() < lockExpiry) return;
 
         if (file instanceof TFile) {
+          const version = (this.modifyVersions.get(file.path) || 0) + 1;
+          this.modifyVersions.set(file.path, version);
+          this.localModificationTimes.set(file.path, Date.now());
+
           // Give Obsidian a tiny tick to finish writing the file to disk
           setTimeout(async () => {
             if (this.wsClient.getState() === WsState.CONNECTED) {
@@ -563,6 +600,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
                 return;
               }
               const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+              if (this.modifyVersions.get(file.path) !== version) return;
               if (encrypted.contentStr.length > 2 * 1024 * 1024) {
                 await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
               } else {
@@ -620,6 +658,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     if (!this.settings.serverUrl || !this.settings.apiToken) return;
     
     new Notice('ObsidianApiSync: Syncing files from server...');
+    const pullStartTime = Date.now();
     try {
       const listResp = await requestUrl({
         url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files?include_content=true`,
@@ -633,6 +672,11 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
       for (const item of data.files) {
         const path = item.path;
+
+        if ((this.localModificationTimes.get(path) || 0) > pullStartTime) {
+          continue;
+        }
+
         let remoteContent = item.content;
         let isBin = !!item.is_binary;
         

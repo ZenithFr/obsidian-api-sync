@@ -127,7 +127,7 @@ async def list_files(
         # Don't sync our own token or version/trash folders
         if relative == ".obsidian/plugins/obsidian-api-sync/data.json":
             continue
-        if relative.startswith(".sync_versions/") or relative.startswith(".sync_trash/"):
+        if relative.startswith(".sync_versions/") or relative.startswith(".sync_trash/") or relative.startswith(".sync_tmp/"):
             continue
 
         if include_content:
@@ -255,6 +255,25 @@ class ChunkPayload(BaseModel):
     total_chunks: int
     data: str  # Base64
 
+@router.delete(
+    "/chunk/{upload_id}",
+    summary="Cancel a chunked upload",
+    description="Deletes temporary chunks for an aborted upload.",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def cancel_chunked_upload(
+    upload_id: str,
+    token_data: dict = Depends(get_current_token),
+) -> Response:
+    vault_path = await get_vault_path()
+    if not upload_id.isalnum():
+        raise HTTPException(status_code=400, detail="Invalid upload ID")
+    tmp_dir = Path(vault_path) / ".sync_tmp" / upload_id
+    if tmp_dir.exists():
+        import shutil
+        await asyncio.to_thread(shutil.rmtree, tmp_dir, ignore_errors=True)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 @router.post(
     "/chunk",
     summary="Upload a file chunk",
@@ -265,6 +284,8 @@ async def upload_chunk(
     payload: ChunkPayload,
     token_data: dict = Depends(get_current_token),
 ) -> JSONResponse:
+    if not payload.upload_id.isalnum():
+        raise HTTPException(status_code=400, detail="Invalid upload ID")
     vault_path = await get_vault_path()
     tmp_dir = Path(vault_path) / ".sync_tmp" / payload.upload_id
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -282,6 +303,7 @@ class CommitPayload(BaseModel):
     upload_id: str
     path: str
     is_binary: bool
+    total_chunks: int
 
 @router.post(
     "/commit",
@@ -296,12 +318,21 @@ async def commit_chunked_upload(
 ) -> JSONResponse:
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, payload.path)
+    if not payload.upload_id.isalnum():
+        raise HTTPException(status_code=400, detail="Invalid upload ID")
     tmp_dir = Path(vault_path) / ".sync_tmp" / payload.upload_id
 
     if not tmp_dir.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload ID not found")
 
     chunks = sorted([f for f in tmp_dir.iterdir() if f.is_file()], key=lambda x: int(x.name))
+    
+    if len(chunks) != payload.total_chunks:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Expected {payload.total_chunks} chunks, found {len(chunks)}")
+        
+    for i, chunk in enumerate(chunks):
+        if int(chunk.name) != i:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Missing chunk {i}")
     
     lock = await file_locks.acquire(str(target))
     async with lock:
