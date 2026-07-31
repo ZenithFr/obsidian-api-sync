@@ -616,11 +616,16 @@ async function openFile(filePath) {
   if (!safe) { showToast('Invalid file path.', 'error'); return; }
 
   try {
+    const isBinary = !/\.(md|txt|csv|json|yaml|yml|py|js|ts|css|html|sh|bat|xml|ini)$/i.test(safe);
     const res = await fetch(`/api/files/${encodeURIComponent(safe)}`, {
       headers: activeToken ? { 'Authorization': `Bearer ${activeToken}` } : {},
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const content = await res.text();
+    
+    let content = '';
+    if (!isBinary) {
+        content = await res.text();
+    }
 
     state.currentFile    = safe;
     state.currentContent = content;
@@ -754,8 +759,6 @@ async function renameFile(oldPath, newPath) {
    ════════════════════════════════════════════════════════════════ */
 
 function setMode(mode) {
-  state.mode = mode;
-
   const btnReading       = document.getElementById('btn-reading');
   const btnEditing       = document.getElementById('btn-editing');
   const readingContainer = document.getElementById('reading-container');
@@ -763,6 +766,11 @@ function setMode(mode) {
   const readerPane       = document.getElementById('reader-pane');
   const welcomeState     = document.getElementById('welcome-state');
   const btnSave          = document.getElementById('btn-save');
+
+  const isBinary = state.currentFile && !/\.(md|txt|csv|json|yaml|yml|py|js|ts|css|html|sh|bat|xml|ini)$/i.test(state.currentFile);
+  if (isBinary && mode === 'editing') return; // Cannot edit binary files
+
+  state.mode = mode;
 
   if (mode === 'reading') {
     // If transitioning from editing, capture current textarea value immediately
@@ -812,13 +820,40 @@ function setMode(mode) {
 function updateEditorContent() {
   if (!state.currentFile) return;
 
-  // Reading mode: render sanitized HTML
+  const isBinary = !/\.(md|txt|csv|json|yaml|yml|py|js|ts|css|html|sh|bat|xml|ini)$/i.test(state.currentFile);
   const readerPane = document.getElementById('reader-pane');
-  const rendered = renderMarkdown(state.currentContent);
-  readerPane.innerHTML = rendered; // DOMPurify already sanitized in renderMarkdown()
+  const textarea = document.getElementById('editor-textarea');
+  const btnEditingMode = document.getElementById('btn-editing');
+  
+  if (isBinary) {
+    if (/\.(png|jpe?g|gif|webp|svg)$/i.test(state.currentFile)) {
+        readerPane.innerHTML = `<img src="/api/files/${encodeURIComponent(state.currentFile)}" class="max-w-full h-auto rounded-lg shadow-sm mx-auto mt-4" />`;
+    } else if (/\.(mp4|webm)$/i.test(state.currentFile)) {
+        readerPane.innerHTML = `<video src="/api/files/${encodeURIComponent(state.currentFile)}" controls class="max-w-full rounded-lg shadow-sm mx-auto mt-4"></video>`;
+    } else if (/\.pdf$/i.test(state.currentFile)) {
+        readerPane.innerHTML = `<iframe src="/api/files/${encodeURIComponent(state.currentFile)}" class="w-full h-[80vh] border-0 rounded-lg shadow-sm mt-4"></iframe>`;
+    } else {
+        readerPane.innerHTML = `<div class="p-8 text-center text-[var(--color-text-muted)] mt-12">
+            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <p>Binary file format not previewable.</p>
+            <a href="/api/files/${encodeURIComponent(state.currentFile)}" download class="mt-4 inline-block px-4 py-2 bg-[var(--color-accent)] text-white rounded-md hover:bg-blue-600 transition-colors">Download File</a>
+        </div>`;
+    }
+    textarea.value = '';
+    textarea.disabled = true;
+    if (btnEditingMode) btnEditingMode.style.display = 'none';
+  } else {
+    // Reading mode: render sanitized HTML
+    const rendered = renderMarkdown(state.currentContent);
+    readerPane.innerHTML = rendered;
 
-  // Editor mode: raw text
-  document.getElementById('editor-textarea').value = state.currentContent;
+    // Editor mode: raw text
+    textarea.value = state.currentContent;
+    textarea.disabled = false;
+    if (btnEditingMode) btnEditingMode.style.display = 'flex';
+  }
   updateEditorStats();
 }
 
