@@ -647,9 +647,8 @@ async function openFile(filePath) {
 async function saveCurrentFile() {
   if (!state.currentFile) return;
   const safe = sanitizeFilePath(state.currentFile);
-  if (!safe) { showToast('Invalid file path.', 'error'); return; }
-
-  const content = document.getElementById('editor-textarea').value;
+  if (!safe) return;
+  const content = state.cmView ? state.cmView.state.doc.toString() : document.getElementById('editor-textarea').value;
   // 10 MB guard — mirrors server MAX_FILE_SIZE_BYTES (DoS defense)
   if (new Blob([content]).size > 10 * 1024 * 1024) {
     showToast('File too large to save (max 10 MB).', 'error');
@@ -740,6 +739,8 @@ async function renameFile(oldPath, newPath) {
     if (activeToken) headers['Authorization'] = `Bearer ${activeToken}`;
     const res = await fetch('/api/files/rename', {
       method: 'POST', headers,
+      body: JSON.stringify({ oldPath: safeOld, newPath: safeNew })
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     showToast('Note renamed.', 'success');
     if (state.currentFile === safeOld) state.currentFile = safeNew;
@@ -774,12 +775,9 @@ function setMode(mode) {
 
   if (mode === 'reading') {
     // If transitioning from editing, capture current textarea value immediately
-    const textarea = document.getElementById('editor-textarea');
-    if (textarea && textarea.value !== undefined) {
-      state.currentContent = textarea.value;
-      if (state.unsaved) {
-        saveCurrentFile();
-      }
+    state.currentContent = state.cmView ? state.cmView.state.doc.toString() : document.getElementById('editor-textarea').value;
+    if (state.unsaved) {
+      saveCurrentFile();
     }
 
     // Reading mode
@@ -810,9 +808,32 @@ function setMode(mode) {
     btnReading.classList.remove('active-mode');
     btnEditing.classList.add('active-mode');
 
-    const textarea = document.getElementById('editor-textarea');
-    textarea.value = state.currentContent;
-    textarea.focus();
+    if (window.initCodeMirror) {
+        if (!state.cmView) {
+            state.cmView = window.initCodeMirror(
+                document.getElementById('editor-mount'), 
+                state.currentContent,
+                (newContent) => {
+                    state.currentContent = newContent;
+                    state.unsaved = true;
+                    updateEditorStats();
+                    document.getElementById('save-status').textContent = 'Unsaved changes';
+                    document.getElementById('btn-save').classList.remove('hidden');
+                }
+            );
+        } else {
+            if (state.cmView.state.doc.toString() !== state.currentContent) {
+                state.cmView.dispatch({
+                    changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent}
+                });
+            }
+        }
+        state.cmView.focus();
+    } else {
+        const textarea = document.getElementById('editor-textarea');
+        textarea.value = state.currentContent;
+        textarea.focus();
+    }
     updateEditorStats();
   }
 }
@@ -850,7 +871,15 @@ function updateEditorContent() {
     readerPane.innerHTML = rendered;
 
     // Editor mode: raw text
-    textarea.value = state.currentContent;
+    if (window.initCodeMirror && state.cmView) {
+        if (state.cmView.state.doc.toString() !== state.currentContent) {
+            state.cmView.dispatch({
+                changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent}
+            });
+        }
+    } else {
+        textarea.value = state.currentContent;
+    }
     textarea.disabled = false;
     if (btnEditingMode) btnEditingMode.style.display = 'flex';
   }
@@ -924,7 +953,7 @@ function onEditorKeydown(e) {
 }
 
 function updateEditorStats() {
-  const text = document.getElementById('editor-textarea').value;
+  const text = state.cmView ? state.cmView.state.doc.toString() : document.getElementById('editor-textarea').value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   document.getElementById('stat-words').textContent = `${words} word${words !== 1 ? 's' : ''}`;
   document.getElementById('stat-chars').textContent = `${text.length} chars`;
