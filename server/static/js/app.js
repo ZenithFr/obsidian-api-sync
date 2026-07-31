@@ -823,7 +823,8 @@ function setMode(mode) {
         } else {
             if (state.cmView.state.doc.toString() !== state.currentContent) {
                 state.cmView.dispatch({
-                    changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent}
+                    changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent},
+                    selection: {anchor: 0}
                 });
             }
         }
@@ -875,7 +876,8 @@ function updateEditorContent() {
     if (window.initCodeMirror && state.cmView) {
         if (state.cmView.state.doc.toString() !== state.currentContent) {
             state.cmView.dispatch({
-                changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent}
+                changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent},
+                selection: {anchor: 0}
             });
         }
     } else {
