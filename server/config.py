@@ -1,8 +1,15 @@
-﻿"""
+"""
 config.py -- Application settings loaded from .env via pydantic-settings.
 """
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Stable directory that contains this file — used to anchor default paths so
+# that relative defaults never silently resolve to a wrong directory when the
+# process is started from a different cwd (e.g. systemd WorkingDirectory).
+_SERVER_DIR: Path = Path(__file__).parent.resolve()
 
 
 class Settings(BaseSettings):
@@ -40,8 +47,11 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
 
     # Persistence
-    DB_PATH: str = "./obsidian-sync.db"
-    DEFAULT_VAULT_PATH: str = "./vault"
+    # Defaults are absolute paths anchored to the server/ directory so the
+    # process produces the same result regardless of its working directory.
+    # Values supplied in .env are accepted as-is and resolved in database.py.
+    DB_PATH: str = str(_SERVER_DIR / "obsidian-sync.db")
+    DEFAULT_VAULT_PATH: str = str(_SERVER_DIR / "vault")
 
     def get_cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS env var into a list."""
