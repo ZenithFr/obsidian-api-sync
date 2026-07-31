@@ -46,6 +46,17 @@ def _sanitize_path(vault_path: str, relative_path: str) -> Path:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Path traversal detected: '{relative_path}' escapes the vault root.",
         )
+
+    try:
+        rel_parts = target.relative_to(vault_root).parts
+        if rel_parts and rel_parts[0] in (".sync_versions", ".sync_trash"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access to internal sync folders is forbidden.",
+            )
+    except ValueError:
+        pass
+
     return target
 
 
