@@ -620,10 +620,10 @@ async function openFile(filePath) {
       headers: activeToken ? { 'Authorization': `Bearer ${activeToken}` } : {},
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const content = await res.text();
 
     state.currentFile    = safe;
-    state.currentContent = data.content || '';
+    state.currentContent = content;
     state.unsaved        = false;
 
     // Always open in Reading Mode (default per spec)
