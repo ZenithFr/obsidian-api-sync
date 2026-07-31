@@ -12,6 +12,7 @@ Security hardening:
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import shutil
@@ -28,6 +29,10 @@ from database import add_audit, get_vault_path
 from version_control import save_version, move_to_trash
 
 logger = logging.getLogger(__name__)
+
+def _simple_hash(content: str) -> str:
+    """Fast MD5 hash (first 16 chars) used for conflict detection — not security."""
+    return hashlib.md5(content.encode("utf-8", errors="replace")).hexdigest()[:16]
 
 router = APIRouter()
 
@@ -190,9 +195,28 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
             if msg_type == "FILE_MODIFY":
                 content: str | None = payload.get("content")
                 is_binary: bool = payload.get("is_binary", False)
+                base_hash: str = payload.get("base_hash", "")
                 if content is None:
                     await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "FILE_MODIFY requires 'content'."})
                     continue
+
+                # Conflict detection: if client sent a base_hash, check it
+                # against the current server file. Mismatch = concurrent edit.
+                if base_hash and not is_binary and target_file.exists():
+                    try:
+                        current_text = target_file.read_text(encoding="utf-8", errors="replace")
+                        current_hash = _simple_hash(current_text)
+                        if current_hash != base_hash:
+                            # Send conflict back to the originating client only
+                            await websocket.send_json({
+                                "type": "CONFLICT",
+                                "path": file_path,
+                                "server_content": current_text,
+                                "client_content": content,
+                            })
+                            continue  # Do NOT write to disk
+                    except OSError:
+                        pass  # If we can't read the file, just let the write proceed
 
                 if target_file.exists():
                     save_version(vault_path, file_path)

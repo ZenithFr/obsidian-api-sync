@@ -1,4 +1,4 @@
-import { App, Modal, Notice, requestUrl } from 'obsidian';
+import { App, Modal, Notice, requestUrl, TFile } from 'obsidian';
 import type ObsidianApiSyncPlugin from './main';
 
 interface TrashedFile {
@@ -179,4 +179,118 @@ export class VersionHistoryModal extends Modal {
     onClose() {
         this.contentEl.empty();
     }
+}
+
+// ─── Conflict Resolution Modal ────────────────────────────────────────────────
+
+export class ConflictResolutionModal extends Modal {
+  plugin: ObsidianApiSyncPlugin;
+  path: string;
+  serverContent: string;
+  clientContent: string;
+
+  constructor(
+    app: App,
+    plugin: ObsidianApiSyncPlugin,
+    path: string,
+    serverContent: string,
+    clientContent: string
+  ) {
+    super(app);
+    this.plugin = plugin;
+    this.path = path;
+    this.serverContent = serverContent;
+    this.clientContent = clientContent;
+    this.modalEl.style.width = 'min(90vw, 1100px)';
+    this.modalEl.style.maxWidth = '1100px';
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+
+    contentEl.createEl('h2', { text: '⚠️ Sync Conflict' });
+    contentEl.createEl('p', {
+      text: `"${this.path}" was edited on another device at the same time. Choose which version to keep.`,
+    }).style.color = 'var(--text-muted)';
+
+    const grid = contentEl.createDiv();
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;';
+
+    // Server version (left)
+    const leftPanel = grid.createDiv();
+    leftPanel.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    leftPanel.createEl('div', { text: '🌐 Server Version (Remote)' }).style.cssText =
+      'font-size:0.85em;font-weight:600;color:var(--text-muted);';
+    const serverPre = leftPanel.createEl('pre');
+    serverPre.style.cssText =
+      'background:var(--background-secondary);padding:12px;border-radius:6px;overflow:auto;max-height:380px;font-size:0.78em;white-space:pre-wrap;word-break:break-word;border:1px solid var(--background-modifier-border);';
+    serverPre.setText(this.serverContent);
+
+    // Client version (right)
+    const rightPanel = grid.createDiv();
+    rightPanel.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+    rightPanel.createEl('div', { text: '💻 Your Local Version' }).style.cssText =
+      'font-size:0.85em;font-weight:600;color:var(--interactive-accent);';
+    const clientPre = rightPanel.createEl('pre');
+    clientPre.style.cssText =
+      'background:var(--background-secondary);padding:12px;border-radius:6px;overflow:auto;max-height:380px;font-size:0.78em;white-space:pre-wrap;word-break:break-word;border:1px solid var(--interactive-accent);';
+    clientPre.setText(this.clientContent);
+
+    // Action buttons
+    const btnRow = contentEl.createDiv();
+    btnRow.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap;';
+
+    // Merge manually
+    const mergeBtn = btnRow.createEl('button', { text: '✏️ Merge Manually' });
+    mergeBtn.onclick = async () => {
+      const mergeFilePath = `${this.path}.merge-conflict`;
+      const mergeContent = [
+        '<<<<<<< YOUR VERSION',
+        this.clientContent,
+        '=======',
+        this.serverContent,
+        '>>>>>>> SERVER VERSION',
+      ].join('\n');
+      try {
+        await this.app.vault.adapter.write(mergeFilePath, mergeContent);
+        const mergeFile = this.app.vault.getAbstractFileByPath(mergeFilePath);
+        if (mergeFile instanceof TFile) {
+          await this.app.workspace.getLeaf().openFile(mergeFile);
+        }
+        new Notice(`Merge file created: ${mergeFilePath}. Edit and sync when done.`);
+      } catch (e) {
+        new Notice('Failed to create merge file.');
+        console.error(e);
+      }
+      this.close();
+    };
+
+    // Keep server version
+    const keepServerBtn = btnRow.createEl('button', { text: '🌐 Keep Server Version' });
+    keepServerBtn.onclick = async () => {
+      const file = this.app.vault.getAbstractFileByPath(this.path);
+      if (file instanceof TFile) {
+        this.plugin.remoteChangeLocks.set(this.path, Date.now() + 2000);
+        await this.app.vault.modify(file, this.serverContent);
+        new Notice(`✅ Kept server version of ${this.path}`);
+      } else {
+        new Notice('Could not find local file to overwrite.');
+      }
+      this.close();
+    };
+
+    // Keep local version (force-push to server)
+    const keepLocalBtn = btnRow.createEl('button', { text: '💻 Keep My Version' });
+    keepLocalBtn.addClass('mod-cta');
+    keepLocalBtn.onclick = async () => {
+      this.plugin.wsClient.sendFileModifyForce(this.path, this.clientContent);
+      new Notice(`✅ Kept your local version of ${this.path}`);
+      this.close();
+    };
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
 }

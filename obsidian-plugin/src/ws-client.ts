@@ -9,6 +9,7 @@ import {
   ErrorPayload,
   InboundPayload,
 } from './types';
+import { fnv1a } from './utils';
 
 export enum WsState {
   DISCONNECTED = 'DISCONNECTED',
@@ -41,6 +42,10 @@ export class ObsidianApiSyncWsClient {
   public onStateChange: ((state: WsState) => void) | null = null;
   public onConnected: ((clientId: string) => void) | null = null;
   public onError: ((payload: ErrorPayload) => void) | null = null;
+  public onConflict?: (payload: { path: string; server_content: string; client_content: string }) => void;
+
+  /** Last-known hash per file path, used for conflict detection. */
+  private contentHashCache = new Map<string, string>();
 
   // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -146,11 +151,15 @@ export class ObsidianApiSyncWsClient {
    * Instantly sends a modify payload, or queues it if disconnected.
    */
   sendFileModify(path: string, content: string, is_binary: boolean = false): void {
-    const payload: FileModifyPayload = {
-      type: 'FILE_MODIFY',
+    // Attach the hash of the content we last knew so the server can detect conflicts.
+    const base_hash = is_binary ? '' : (this.contentHashCache.get(path) ?? '');
+    const newHash = is_binary ? '' : fnv1a(content);
+    const payload = {
+      type: 'FILE_MODIFY' as const,
       path,
       content,
       is_binary,
+      base_hash,
     };
 
     if (this.state === WsState.CONNECTED && this.ws) {
@@ -158,6 +167,22 @@ export class ObsidianApiSyncWsClient {
     } else {
       this.enqueue(payload);
     }
+    // Optimistically update the cache so rapid consecutive sends don't false-positive
+    this.contentHashCache.set(path, newHash);
+  }
+
+  /**
+   * Force-write without a base_hash — used when the user explicitly resolves a
+   * conflict and wants to overwrite the server version.
+   */
+  sendFileModifyForce(path: string, content: string, is_binary: boolean = false): void {
+    const payload = { type: 'FILE_MODIFY' as const, path, content, is_binary, base_hash: '' };
+    if (this.state === WsState.CONNECTED && this.ws) {
+      this.rawSend(payload);
+    } else {
+      this.enqueue(payload);
+    }
+    this.contentHashCache.set(path, fnv1a(content));
   }
 
   sendFileDelete(path: string): void {
@@ -268,6 +293,13 @@ export class ObsidianApiSyncWsClient {
         const connPayload = payload as ConnectedPayload;
         if (this.onConnected) {
           this.onConnected(connPayload.client_id);
+        }
+        break;
+      }
+
+      case 'CONFLICT': {
+        if (this.onConflict) {
+          this.onConflict(payload as { path: string; server_content: string; client_content: string });
         }
         break;
       }

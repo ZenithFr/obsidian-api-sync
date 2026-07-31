@@ -2,7 +2,7 @@ import { Plugin, TFile, TAbstractFile, Notice, requestUrl } from 'obsidian';
 import { ObsidianApiSyncSettings, DEFAULT_SETTINGS } from './types';
 import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
 import { ObsidianApiSyncSettingTab } from './settings';
-import { TrashRecoveryModal, VersionHistoryModal } from './modals';
+import { TrashRecoveryModal, VersionHistoryModal, ConflictResolutionModal } from './modals';
 
 export default class ObsidianApiSyncPlugin extends Plugin {
   settings!: ObsidianApiSyncSettings;
@@ -88,6 +88,16 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     this.wsClient.setAutoReconnect(this.settings.autoReconnect);
 
     // ── WS Callbacks ──────────────────────────────────────────────────────────
+
+    this.wsClient.onConflict = (payload) => {
+      new ConflictResolutionModal(
+        this.app,
+        this,
+        payload.path,
+        payload.server_content,
+        payload.client_content
+      ).open();
+    };
 
     this.wsClient.onFileChanged = async (payload) => {
       if (payload.path.startsWith(this.app.vault.configDir + '/')) {

@@ -9,8 +9,9 @@ connected clients through the shared ConnectionManager instance in ws.py.
 from datetime import datetime, timezone
 from pathlib import Path
 import base64
+import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
@@ -190,6 +191,7 @@ async def write_file(
     path: str,
     request: Request,
     token_data: dict = Depends(get_current_token),
+    x_base_hash: str | None = Header(None, alias="X-Base-Hash"),
 ) -> JSONResponse:
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
@@ -209,6 +211,24 @@ async def write_file(
     except UnicodeDecodeError:
         is_binary = True
         content = base64.b64encode(body_bytes).decode("ascii")
+
+    # Conflict detection
+    if target.exists() and x_base_hash and not is_binary:
+        try:
+            current_text = target.read_text(encoding="utf-8", errors="replace")
+            current_hash = hashlib.md5(current_text.encode("utf-8", errors="replace")).hexdigest()[:16]
+            if current_hash != x_base_hash:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "type": "CONFLICT",
+                        "path": path,
+                        "server_content": current_text,
+                        "client_content": content,
+                    }
+                )
+        except OSError:
+            pass  # Proceed if read fails
 
     # Save version before modifying existing file
     if target.exists():

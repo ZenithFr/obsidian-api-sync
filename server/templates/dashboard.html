@@ -349,6 +349,8 @@
     <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">Tokens</button>
     <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">Connect</button>
     <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">Audit Log</button>
+    <button onclick="switchTab('history')" id="tab-history" class="tab-btn">History</button>
+    <button onclick="switchTab('trash')"   id="tab-trash"   class="tab-btn">Trash</button>
     <!-- Animated sliding indicator -->
     <div id="tab-indicator" class="absolute bottom-0 h-[2px] rounded-full bg-primary"></div>
   </div>
@@ -597,6 +599,52 @@
     </div>
   </div>
 
+  <!-- ════════════════ TAB: HISTORY ════════════════ -->
+  <div id="panel-history" class="tab-panel hidden stagger">
+    <div class="card">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-on-surface">File Version History</h2>
+          <p class="text-sm text-muted mt-1">Browse past versions of your synced files.</p>
+        </div>
+        <input id="history-search" type="text" placeholder="Search by filename…" class="input w-64" />
+      </div>
+      <div id="history-file-list" class="space-y-1">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Version detail panel -->
+    <div id="history-detail" class="card mt-4 hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="history-detail-title" class="font-semibold text-primary"></h3>
+        <button onclick="closeHistoryDetail()" class="btn-link text-muted">✕ Close</button>
+      </div>
+      <table class="data-table w-full">
+        <thead><tr><th>Date</th><th>Size</th><th>Action</th></tr></thead>
+        <tbody id="history-versions-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════════════════ TAB: TRASH ════════════════ -->
+  <div id="panel-trash" class="tab-panel hidden stagger">
+    <div class="card">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-on-surface">Deleted Files</h2>
+          <p class="text-sm text-muted mt-1">Files deleted from sync are kept here for 30 days.</p>
+        </div>
+        <button onclick="loadTrash()" class="btn-link">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Refresh
+        </button>
+      </div>
+      <div id="trash-list-content">
+        <p class="text-muted text-sm">Click Refresh to load.</p>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ── Toast Container ──────────────────────────────────────────── -->
@@ -650,7 +698,7 @@ function showToast(message, type = 'info') {
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
 
-const TAB_IDS = ['vault', 'tokens', 'connect', 'audit'];
+const TAB_IDS = ['vault', 'tokens', 'connect', 'audit', 'history', 'trash'];
 
 function updateTabIndicator(name) {
   const tab = document.getElementById(`tab-${name}`);
@@ -685,6 +733,8 @@ function switchTab(name) {
   updateTabIndicator(name);
   if (name === 'audit') loadAuditLog();
   if (name === 'tokens') loadTokens();
+  if (name === 'history') loadHistory();
+  if (name === 'trash') loadTrash();
 }
 
 
@@ -953,6 +1003,107 @@ document.addEventListener('DOMContentLoaded', () => {
   startAuditRefresh();
 });
 {% endif %}
+/* ── History ──────────────────────────────────────────────────────── */
+
+async function loadHistory() {
+  const resp = await apiFetch('/api/files');
+  const data = await resp.json();
+  const files = data.files || [];
+  const container = document.getElementById('history-file-list');
+  container.innerHTML = '';
+  for (const file of files) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between py-2 px-3 rounded-md hover:bg-surface/50 cursor-pointer';
+    row.innerHTML = `
+      <span class="text-sm font-mono text-muted">${file.path}</span>
+      <button class="btn-secondary text-xs !h-8 !px-3" onclick="loadFileVersions('${file.path}')">Versions</button>
+    `;
+    container.appendChild(row);
+  }
+}
+
+async function loadFileVersions(path) {
+  const encoded = path.split('/').map(encodeURIComponent).join('/');
+  const resp = await apiFetch(`/api/history/versions/${encoded}`);
+  const data = await resp.json();
+  const versions = data.versions || [];
+  
+  document.getElementById('history-detail-title').textContent = path;
+  const tbody = document.getElementById('history-versions-body');
+  tbody.innerHTML = '';
+  
+  if (versions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No versions found</td></tr>';
+  } else {
+    for (const v of versions) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${new Date(v.ts).toLocaleString()}</td>
+        <td>${(v.size / 1024).toFixed(1)} KB</td>
+        <td><button class="btn-link text-xs" onclick="restoreVersion('${path}', ${v.ts})">Restore</button></td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+  document.getElementById('history-detail').classList.remove('hidden');
+}
+
+function closeHistoryDetail() {
+  document.getElementById('history-detail').classList.add('hidden');
+}
+
+async function restoreVersion(path, ts) {
+  if (!confirm(`Restore version from ${new Date(ts).toLocaleString()}? The current file will be moved to trash first.`)) return;
+  const encoded = path.split('/').map(encodeURIComponent).join('/');
+  await apiFetch(`/api/history/restore-version/${encoded}?ts=${ts}`, { method: 'POST' });
+  showToast('Version restored successfully');
+}
+
+document.getElementById('history-search')?.addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#history-file-list > div').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+
+
+/* ── Trash ────────────────────────────────────────────────────────── */
+
+async function loadTrash() {
+  const resp = await apiFetch('/api/history/trash');
+  const data = await resp.json();
+  const items = data.trash || [];
+  const container = document.getElementById('trash-list-content');
+
+  if (items.length === 0) {
+    container.innerHTML = '<p class="text-muted text-sm py-4 text-center">The trash is empty.</p>';
+    return;
+  }
+
+  const table = `
+    <table class="data-table w-full">
+      <thead><tr><th>Original Path</th><th>Deleted</th><th>Size</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${items.map(f => `
+          <tr>
+            <td class="font-mono text-xs">${f.original_path}</td>
+            <td>${new Date(f.ts).toLocaleString()}</td>
+            <td>${(f.size / 1024).toFixed(1)} KB</td>
+            <td class="flex gap-2">
+              <button class="btn-link text-xs" onclick="restoreTrash('${f.trash_path}','${f.original_path}')">Restore</button>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>`;
+  container.innerHTML = table;
+}
+
+async function restoreTrash(trashPath, originalPath) {
+  await apiFetch(`/api/history/restore-trash?trash_path=${encodeURIComponent(trashPath)}&original_path=${encodeURIComponent(originalPath)}`, { method: 'POST' });
+  showToast(`Restored: ${originalPath}`);
+  loadTrash();
+}
+
 </script>
 </body>
 </html>
