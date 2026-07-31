@@ -25,7 +25,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from auth import verify_ws_token
 from config import settings
 from database import add_audit, get_vault_path
-from version_control import save_version, move_to_trash
+from version_control import save_version, move_to_trash, _get_versions_dir
 
 logger = logging.getLogger(__name__)
 
@@ -231,7 +231,7 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                         pass  # If we can't read the file, just let the write proceed
 
                 if target_file.exists():
-                    await asyncio.to_thread(save_version, vault_path, file_path)
+                    await asyncio.to_thread(save_version, Path(vault_path), file_path)
 
                 target_file.parent.mkdir(parents=True, exist_ok=True)
                 
@@ -263,7 +263,7 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
             # -- FILE_DELETE --------------------------------------------------
             elif msg_type == "FILE_DELETE":
                 if target_file.exists():
-                    await asyncio.to_thread(move_to_trash, vault_path, file_path)
+                    await asyncio.to_thread(move_to_trash, Path(vault_path), file_path)
 
                 ts = _utcnow_iso()
                 await manager.broadcast(
@@ -286,13 +286,19 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     continue
 
                 if target_file.exists():
-                    await asyncio.to_thread(save_version, vault_path, file_path)
+                    await asyncio.to_thread(save_version, Path(vault_path), file_path)
                     target_new.parent.mkdir(parents=True, exist_ok=True)
                     try:
                         await asyncio.to_thread(target_file.rename, target_new)
                     except IsADirectoryError:
                         await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Target path is a directory."})
                         continue
+                    
+                    old_versions_dir = _get_versions_dir(Path(vault_path)) / file_path
+                    if old_versions_dir.exists():
+                        new_versions_dir = _get_versions_dir(Path(vault_path)) / new_path
+                        new_versions_dir.parent.mkdir(parents=True, exist_ok=True)
+                        await asyncio.to_thread(old_versions_dir.rename, new_versions_dir)
 
                 ts = _utcnow_iso()
                 await manager.broadcast(
