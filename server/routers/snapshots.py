@@ -120,12 +120,10 @@ async def restore_snapshot(snapshot_id: str, token_data: dict = Depends(get_curr
         
         # 2. Wipe vault (excluding .sync_ folders and our own plugin data)
         def _wipe_and_restore():
-            for root, dirs, files in os.walk(vault_path, topdown=False):
+            dirs_to_check = []
+            for root, dirs, files in os.walk(vault_path, topdown=True):
                 # Filter dirs to not descend into ignored ones during wipe
-                dirs_copy = list(dirs)
-                for d in dirs_copy:
-                    if d.startswith('.sync_') or d == '.git':
-                        dirs.remove(d)
+                dirs[:] = [d for d in dirs if not (d.startswith('.sync_') or d == '.git')]
                         
                 for file in files:
                     file_path = Path(root) / file
@@ -135,15 +133,18 @@ async def restore_snapshot(snapshot_id: str, token_data: dict = Depends(get_curr
                         file_path.unlink()
                     except OSError:
                         pass
+                
+                dirs_to_check.append(Path(root))
                         
-                # Also remove empty directories
-                for d in dirs:
-                    dir_path = Path(root) / d
-                    try:
-                        if not any(dir_path.iterdir()):
-                            dir_path.rmdir()
-                    except OSError:
-                        pass
+            # Also remove empty directories bottom-up
+            for dir_path in reversed(dirs_to_check):
+                if dir_path == vault_path:
+                    continue
+                try:
+                    if not any(dir_path.iterdir()):
+                        dir_path.rmdir()
+                except OSError:
+                    pass
                         
             # 3. Unzip snapshot
             with zipfile.ZipFile(snap_path, 'r') as zf:

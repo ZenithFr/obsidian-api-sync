@@ -390,6 +390,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
             new Notice('❌ Please configure Connection tab first.');
             return;
           }
+          btn.setDisabled(true);
           new Notice('ObsidianApiSync: Creating snapshot...');
           try {
             await requestUrl({
@@ -403,6 +404,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
             this.renderRecoveryTab(el);
           } catch (e) {
             new Notice('❌ Failed to create snapshot.');
+            btn.setDisabled(false);
           }
         })
       );
@@ -434,6 +436,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
             btn.style.color = 'var(--text-error)';
             btn.onclick = async () => {
               if (confirm(`🚨 WARNING: This will completely WIPE your current vault and replace it with this snapshot (${date}). A safety backup will be taken automatically before wiping. Are you absolutely sure?`)) {
+                btn.disabled = true;
                 new Notice('ObsidianApiSync: Restoring vault from snapshot...');
                 try {
                   await requestUrl({
@@ -444,6 +447,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
                   new Notice('✅ Restore initiated! The vault will reload momentarily.');
                 } catch(e) {
                   new Notice('❌ Failed to restore snapshot.');
+                  btn.disabled = false;
                 }
               }
             };
