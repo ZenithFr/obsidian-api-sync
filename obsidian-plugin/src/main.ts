@@ -427,7 +427,19 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       }
     } catch (err) {
       console.error('[ObsidianApiSync] Pull failed:', err);
-      new Notice('ObsidianApiSync Failed. Check console.');
+      // Surface the real error — especially important on mobile where there is no console.
+      let message = err instanceof Error ? err.message : String(err);
+      // requestUrl throws a string like "net::ERR_CONNECTION_REFUSED" or
+      // includes the HTTP status in the error object.
+      const status = (err as any)?.status;
+      if (status === 401 || status === 403) {
+        message = 'Authentication failed (401). Check your API token in plugin settings.';
+      } else if (status === 503) {
+        message = 'Server error (503): vault directory not found on server.';
+      } else if (!status && (message.includes('Failed to fetch') || message.includes('ERR_CONNECTION'))) {
+        message = 'Cannot reach server. Check Server URL and that the server is running.';
+      }
+      new Notice(`❌ ObsidianApiSync: ${message}`);
     }
   }
 
