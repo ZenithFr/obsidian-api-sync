@@ -1,5 +1,6 @@
-import { App, Modal, Notice, requestUrl, TFile } from 'obsidian';
+import { App, Modal, Notice, requestUrl, TFile, Setting } from 'obsidian';
 import type ObsidianApiSyncPlugin from './main';
+import { diffLines } from 'diff';
 
 interface TrashedFile {
     ts: number;
@@ -211,57 +212,68 @@ export class ConflictResolutionModal extends Modal {
 
     contentEl.createEl('h2', { text: '⚠️ Sync Conflict' });
     contentEl.createEl('p', {
-      text: `"${this.path}" was edited on another device at the same time. Choose which version to keep.`,
+      text: `"${this.path}" was edited on another device at the same time.`,
     }).style.color = 'var(--text-muted)';
 
-    const grid = contentEl.createDiv();
-    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;';
+    // Diff View
+    contentEl.createEl('h3', { text: 'Visual Diff' }).style.margin = '10px 0 5px 0';
+    
+    const legend = contentEl.createDiv();
+    legend.style.cssText = 'display:flex;gap:15px;margin-bottom:8px;font-size:0.85em;';
+    legend.createSpan({ text: '■ Server Additions' }).style.color = '#2ecc71';
+    legend.createSpan({ text: '■ Local Text (Missing on Server)' }).style.color = '#e74c3c';
 
-    // Server version (left)
-    const leftPanel = grid.createDiv();
-    leftPanel.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-    leftPanel.createEl('div', { text: '🌐 Server Version (Remote)' }).style.cssText =
-      'font-size:0.85em;font-weight:600;color:var(--text-muted);';
-    const serverPre = leftPanel.createEl('pre');
-    serverPre.style.cssText =
-      'background:var(--background-secondary);padding:12px;border-radius:6px;overflow:auto;max-height:380px;font-size:0.78em;white-space:pre-wrap;word-break:break-word;border:1px solid var(--background-modifier-border);';
-    serverPre.setText(this.serverContent);
+    const diffPre = contentEl.createEl('pre');
+    diffPre.style.cssText = 'background:var(--background-secondary);padding:12px;border-radius:6px;overflow:auto;max-height:300px;font-size:0.85em;white-space:pre-wrap;word-break:break-word;border:1px solid var(--background-modifier-border);';
+    
+    const diffParts = diffLines(this.clientContent, this.serverContent);
+    diffParts.forEach(part => {
+      const span = diffPre.createSpan({ text: part.value });
+      if (part.added) {
+        span.style.backgroundColor = 'rgba(46, 204, 113, 0.15)';
+        span.style.color = '#2ecc71';
+      } else if (part.removed) {
+        span.style.backgroundColor = 'rgba(231, 76, 60, 0.15)';
+        span.style.color = '#e74c3c';
+        span.style.textDecoration = 'line-through';
+      }
+    });
 
-    // Client version (right)
-    const rightPanel = grid.createDiv();
-    rightPanel.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
-    rightPanel.createEl('div', { text: '💻 Your Local Version' }).style.cssText =
-      'font-size:0.85em;font-weight:600;color:var(--interactive-accent);';
-    const clientPre = rightPanel.createEl('pre');
-    clientPre.style.cssText =
-      'background:var(--background-secondary);padding:12px;border-radius:6px;overflow:auto;max-height:380px;font-size:0.78em;white-space:pre-wrap;word-break:break-word;border:1px solid var(--interactive-accent);';
-    clientPre.setText(this.clientContent);
+    // Merge Editor
+    contentEl.createEl('h3', { text: 'Final Merge Result' }).style.margin = '20px 0 5px 0';
+    contentEl.createEl('p', { text: 'Edit this text to create your final merged version.' }).style.cssText = 'font-size:0.85em;color:var(--text-muted);margin:0 0 10px 0;';
+    
+    const mergeTextarea = contentEl.createEl('textarea');
+    mergeTextarea.value = this.clientContent; // Option A: Prepopulate with local
+    mergeTextarea.style.cssText = 'width:100%;min-height:200px;font-family:var(--font-monospace);font-size:0.85em;padding:12px;background:var(--background-primary);border:1px solid var(--interactive-accent);border-radius:6px;resize:vertical;';
 
     // Action buttons
     const btnRow = contentEl.createDiv();
-    btnRow.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap;';
+    btnRow.style.cssText = 'display:flex;gap:10px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap;';
 
-    // Merge manually
-    const mergeBtn = btnRow.createEl('button', { text: '✏️ Merge Manually' });
-    mergeBtn.onclick = async () => {
-      const mergeFilePath = `${this.path}.merge-conflict`;
-      const mergeContent = [
-        '<<<<<<< YOUR VERSION',
-        this.clientContent,
-        '=======',
-        this.serverContent,
-        '>>>>>>> SERVER VERSION',
-      ].join('\n');
-      try {
-        await this.app.vault.adapter.write(mergeFilePath, mergeContent);
-        const mergeFile = this.app.vault.getAbstractFileByPath(mergeFilePath);
-        if (mergeFile instanceof TFile) {
-          await this.app.workspace.getLeaf().openFile(mergeFile);
+    // Resolve with Merged Text
+    const resolveBtn = btnRow.createEl('button', { text: '✨ Resolve with Merged Text' });
+    resolveBtn.addClass('mod-cta');
+    resolveBtn.onclick = async () => {
+      const finalContent = mergeTextarea.value;
+      const file = this.app.vault.getAbstractFileByPath(this.path);
+      if (file instanceof TFile) {
+        this.plugin.remoteChangeLocks.set(this.path, Date.now() + 2000);
+        
+        // Write to disk locally
+        if (this.plugin.isBinaryFile(this.path)) {
+          // Fallback, though diffing binaries shouldn't happen.
+          await this.app.vault.modifyBinary(file, this.plugin.base64ToArrayBuffer(finalContent));
+        } else {
+          await this.app.vault.modify(file, finalContent);
         }
-        new Notice(`Merge file created: ${mergeFilePath}. Edit and sync when done.`);
-      } catch (e) {
-        new Notice('Failed to create merge file.');
-        console.error(e);
+        
+        // Force push to server
+        this.plugin.wsClient.sendFileModifyForce(this.path, finalContent, this.plugin.isBinaryFile(this.path));
+        
+        new Notice(`✅ Merged conflict for ${this.path}`);
+      } else {
+        new Notice('Could not find local file to overwrite.');
       }
       this.close();
     };
@@ -280,11 +292,10 @@ export class ConflictResolutionModal extends Modal {
       this.close();
     };
 
-    // Keep local version (force-push to server)
+    // Keep local version
     const keepLocalBtn = btnRow.createEl('button', { text: '💻 Keep My Version' });
-    keepLocalBtn.addClass('mod-cta');
     keepLocalBtn.onclick = async () => {
-      this.plugin.wsClient.sendFileModifyForce(this.path, this.clientContent);
+      this.plugin.wsClient.sendFileModifyForce(this.path, this.clientContent, this.plugin.isBinaryFile(this.path));
       new Notice(`✅ Kept your local version of ${this.path}`);
       this.close();
     };
