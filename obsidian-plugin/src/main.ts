@@ -46,7 +46,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             await this.app.vault.adapter.write(payload.path, payload.content);
           }
         } catch (err) {
-          console.error('[ObsidianApiSync] Failed to process remote .obsidian change:', err);
+          this.showError("Failed to process remote .obsidian change:", err);
         }
         return;
       }
@@ -69,7 +69,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           try {
             await this.app.vault.modify(file, payload.content);
           } catch (err) {
-            console.error('[ObsidianApiSync] modify failed', err);
+            this.showError("modify failed", err);
           }
         }
       } else if (!file) {
@@ -78,7 +78,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           await this.ensureFolderExists(payload.path);
           await this.app.vault.create(payload.path, payload.content);
         } catch (err) {
-          console.error('[ObsidianApiSync] Failed to create file from remote change:', err);
+          this.showError("Failed to create file from remote change:", err);
         }
       }
     };
@@ -105,7 +105,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           const exists = await this.app.vault.adapter.exists(payload.path);
           if (exists) await this.app.vault.adapter.remove(payload.path);
         } catch (err) {
-          console.error('[ObsidianApiSync] Failed to process remote .obsidian delete:', err);
+          this.showError("Failed to process remote .obsidian delete:", err);
         }
         return;
       }
@@ -115,7 +115,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         try {
           await this.app.vault.trash(file, false); // move to system trash
         } catch (err) {
-          console.error('[ObsidianApiSync] Failed to process remote delete:', err);
+          this.showError("Failed to process remote delete:", err);
         }
       }
     };
@@ -130,7 +130,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             await this.app.vault.adapter.rename(payload.old_path, payload.new_path);
           }
         } catch (err) {
-          console.error('[ObsidianApiSync] Failed to process remote .obsidian rename:', err);
+          this.showError("Failed to process remote .obsidian rename:", err);
         }
         return;
       }
@@ -141,7 +141,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           await this.ensureFolderExists(payload.new_path);
           await this.app.vault.rename(file, payload.new_path);
         } catch (err) {
-          console.error('[ObsidianApiSync] Failed to process remote rename:', err);
+          this.showError("Failed to process remote rename:", err);
         }
       }
     };
@@ -393,7 +393,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               created++;
             }
           } catch(e) {
-            console.error('[ObsidianApiSync] Failed to sync config file:', path, e);
+            this.showError("Failed to sync config file:", path, e);
           }
           continue;
         }
@@ -426,7 +426,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         new Notice('ObsidianApiSync Complete: Vault is up to date.');
       }
     } catch (err) {
-      console.error('[ObsidianApiSync] Pull failed:', err);
+      this.showError("Pull failed:", err);
       new Notice('ObsidianApiSync Failed. Check console.');
     }
   }
@@ -453,8 +453,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : String(err);
-      new Notice(`⚠️ ObsidianApiSync HTTP fallback failed: ${message}`);
-      console.error('[ObsidianApiSync] HTTP fallback error:', err);
+      new Notice(`⚠️ ObsidianApiSync HTTP fallback failed${(err as any)?.status ? " [" + (err as any).status + "]" : ""}: ${message}`);
+      this.showError("HTTP fallback error:", err);
     }
   }
 
@@ -502,7 +502,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         body: content,
       });
     } catch (err) {
-      console.error('[ObsidianApiSync] HTTP fallback raw error:', err);
+      this.showError("HTTP fallback raw error:", err);
     }
   }
 
@@ -532,5 +532,12 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       [WsState.DISCONNECTED]: '🔴 ObsidianApiSync',
     };
     this.statusBarItem.setText(labels[state] ?? 'ObsidianApiSync');
+  }
+
+  showError(context: string, err: any): void {
+    console.error(`[ObsidianApiSync] ${context}:`, err);
+    const status = (err as any)?.status ? ` [${(err as any).status}]` : "";
+    const msg = err instanceof Error ? err.message : String(err);
+    new Notice(`❌ ObsidianApiSync: ${context}${status} - ${msg}`);
   }
 }
