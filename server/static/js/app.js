@@ -829,6 +829,11 @@ function setMode(mode) {
             }
         }
         state.cmView.focus();
+        const textarea = document.getElementById('editor-textarea');
+        if (textarea) {
+            textarea.style.display = 'none';
+            textarea.classList.remove('flex-1');
+        }
     } else {
         const textarea = document.getElementById('editor-textarea');
         textarea.style.display = 'block';
@@ -880,6 +885,8 @@ function updateEditorContent() {
                 selection: {anchor: 0}
             });
         }
+        textarea.style.display = 'none';
+        textarea.classList.remove('flex-1');
     } else {
         textarea.style.display = 'block';
         textarea.classList.add('flex-1');
