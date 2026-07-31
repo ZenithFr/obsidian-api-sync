@@ -20,9 +20,23 @@ def _get_trash_dir(vault_path: Path) -> Path:
     trash_dir.mkdir(parents=True, exist_ok=True)
     return trash_dir
 
+def _get_safe_rel_path(vault_path: Path, relative_file_path: str) -> Path | None:
+    vault_root = vault_path.resolve()
+    target = (vault_root / relative_file_path).resolve()
+    if not str(target).startswith(str(vault_root) + "/") and str(target) != str(vault_root):
+        return None
+    try:
+        return target.relative_to(vault_root)
+    except ValueError:
+        return None
+
 def save_version(vault_path: Path, relative_file_path: str) -> None:
     """Save a copy of the current file state before it gets modified."""
-    file_path = vault_path / relative_file_path
+    safe_rel = _get_safe_rel_path(vault_path, relative_file_path)
+    if not safe_rel:
+        return
+        
+    file_path = vault_path.resolve() / safe_rel
     if not file_path.exists() or not file_path.is_file():
         return
 
@@ -32,7 +46,7 @@ def save_version(vault_path: Path, relative_file_path: str) -> None:
     uid = uuid.uuid4().hex[:6]
     
     # We store the version under .sync_versions/{relative_path}/{ts}-{uid}_{filename}
-    file_version_dir = versions_dir / relative_file_path
+    file_version_dir = versions_dir / safe_rel
     file_version_dir.mkdir(parents=True, exist_ok=True)
     
     version_path = file_version_dir / f"{ts}-{uid}_{file_path.name}"
@@ -78,13 +92,17 @@ def cleanup_versions(file_version_dir: Path) -> None:
     # If directory is empty, we can remove it
     try:
         if not any(file_version_dir.iterdir()):
-            os.removedirs(str(file_version_dir))
+            file_version_dir.rmdir()
     except Exception:
         pass
 
 def move_to_trash(vault_path: Path, relative_file_path: str) -> None:
     """Move a file to the trash instead of deleting it permanently."""
-    file_path = vault_path / relative_file_path
+    safe_rel = _get_safe_rel_path(vault_path, relative_file_path)
+    if not safe_rel:
+        return
+        
+    file_path = vault_path.resolve() / safe_rel
     if not file_path.exists():
         return
         
@@ -95,7 +113,7 @@ def move_to_trash(vault_path: Path, relative_file_path: str) -> None:
     # Trash path: .sync_trash/{relative_path}/{ts}-{uid}_{filename}
     # For folders, just move the folder.
     
-    trash_target_dir = trash_dir / relative_file_path
+    trash_target_dir = trash_dir / safe_rel
     trash_target_dir.mkdir(parents=True, exist_ok=True)
     
     trash_path = trash_target_dir / f"{ts}-{uid}_{file_path.name}"
@@ -140,7 +158,11 @@ def cleanup_trash(trash_dir: Path) -> None:
 
 def list_versions(vault_path: Path, relative_file_path: str) -> list[dict]:
     """List all available versions for a given file."""
-    file_version_dir = _get_versions_dir(vault_path) / relative_file_path
+    safe_rel = _get_safe_rel_path(vault_path, relative_file_path)
+    if not safe_rel:
+        return []
+        
+    file_version_dir = _get_versions_dir(vault_path) / safe_rel
     if not file_version_dir.exists():
         return []
         

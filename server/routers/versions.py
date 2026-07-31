@@ -102,9 +102,7 @@ async def api_restore_trash(trash_path: str, original_path: str, token_data: dic
     except (FileExistsError, IsADirectoryError, OSError):
         raise HTTPException(status_code=409, detail="A file already exists at the original path. Delete it first.")
         
-    if trash_file.is_dir():
-        target_file.unlink()
-        
+    target_file.unlink()
     shutil.move(str(trash_file), str(target_file))
 
     await add_audit(method="POST", path=original_path, token_id=token_data["id"], action="RESTORE_TRASH")
