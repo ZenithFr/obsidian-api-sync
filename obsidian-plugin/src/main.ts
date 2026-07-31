@@ -86,6 +86,24 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     // Create WebSocket client
     this.wsClient = createWsClient();
     this.wsClient.setAutoReconnect(this.settings.autoReconnect);
+    
+    // Load persisted hashes
+    if (this.settings.fileHashes) {
+      for (const [p, h] of Object.entries(this.settings.fileHashes)) {
+        this.wsClient.contentHashCache.set(p, h);
+      }
+    }
+    
+    // Save hashes lazily
+    let saveHashTimer = null;
+    this.wsClient.onHashUpdate = (p, h) => {
+      if (!this.settings.fileHashes) this.settings.fileHashes = {};
+      this.settings.fileHashes[p] = h;
+      if (saveHashTimer) clearTimeout(saveHashTimer);
+      saveHashTimer = setTimeout(() => {
+        this.saveSettings();
+      }, 5000);
+    };
 
     // ── WS Callbacks ──────────────────────────────────────────────────────────
 
@@ -360,11 +378,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const currentContent = editor.getValue();
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
-          if (this.wsClient.getState() === WsState.CONNECTED) {
-            this.wsClient.sendFileModify(file.path, currentContent);
-          } else if (this.settings.serverUrl && this.settings.apiToken) {
-            await this.httpFallbackWriteRaw(file.path, currentContent);
-          }
+          this.wsClient.sendFileModify(file.path, currentContent);
         }, this.settings.syncDebounceMs || 150);
 
         this.modifyDebounceTimers.set(file.path, timer);
@@ -396,11 +410,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             contentStr = await this.app.vault.read(file);
           }
           
-          if (this.wsClient.getState() === WsState.CONNECTED) {
-            this.wsClient.sendFileModify(file.path, contentStr, isBinary);
-          } else if (this.settings.serverUrl && this.settings.apiToken) {
-            await this.httpFallbackWrite(file, contentStr, isBinary);
-          }
+          this.wsClient.sendFileModify(file.path, contentStr, isBinary);
         }, this.settings.syncDebounceMs || 150);
 
         this.modifyDebounceTimers.set(file.path, timer);
@@ -433,9 +443,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           }, 300);
         } else {
           // It's a folder
-          if (this.wsClient.getState() === WsState.CONNECTED) {
-            this.wsClient.sendFolderCreate(file.path);
-          }
+          this.wsClient.sendFolderCreate(file.path);
         }
       })
     );
@@ -444,9 +452,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       this.app.vault.on('delete', (file: TAbstractFile) => {
         if (!this.settings.syncOnModify) return;
         if (!this.shouldSyncPath(file.path, file instanceof TFolder)) return;
-        if (this.wsClient.getState() === WsState.CONNECTED) {
-          this.wsClient.sendFileDelete(file.path);
-        }
+        this.wsClient.sendFileDelete(file.path);
       })
     );
 
@@ -454,9 +460,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
         if (!this.settings.syncOnModify) return;
         if (!this.shouldSyncPath(file.path, file instanceof TFolder)) return;
-        if (this.wsClient.getState() === WsState.CONNECTED) {
-          this.wsClient.sendFileRename(oldPath, file.path);
-        }
+        this.wsClient.sendFileRename(oldPath, file.path);
       })
     );
 

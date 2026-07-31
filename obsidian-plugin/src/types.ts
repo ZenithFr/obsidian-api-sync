@@ -11,6 +11,7 @@ export interface ObsidianApiSyncSettings {
   syncMode: 'include_all' | 'include_selected' | 'exclude_selected';
   selectiveSyncPaths: string;
   allowedExtensions: string;
+  fileHashes: Record<string, string>;
 }
 
 export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {

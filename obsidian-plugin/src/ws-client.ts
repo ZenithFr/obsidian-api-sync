@@ -46,7 +46,11 @@ export class ObsidianApiSyncWsClient {
   public onConflict?: (payload: { path: string; server_content: string; client_content: string }) => void;
 
   /** Last-known hash per file path, used for conflict detection. */
-  private contentHashCache = new Map<string, string>();
+  public contentHashCache = new Map<string, string>();
+  public onHashUpdate: ((path: string, hash: string) => void) | null = null;
+  public getKnownHash(path: string): string {
+    return this.contentHashCache.get(path) ?? "";
+  }
 
   // ─── Public API ────────────────────────────────────────────────────────────
 
@@ -170,6 +174,7 @@ export class ObsidianApiSyncWsClient {
     }
     // Optimistically update the cache so rapid consecutive sends don't false-positive
     this.contentHashCache.set(path, newHash);
+    if (this.onHashUpdate) this.onHashUpdate(path, newHash);
   }
 
   /**
@@ -184,6 +189,7 @@ export class ObsidianApiSyncWsClient {
       this.enqueue(payload);
     }
     this.contentHashCache.set(path, fnv1a(content));
+    if (this.onHashUpdate) this.onHashUpdate(path, fnv1a(content));
   }
 
   sendFileDelete(path: string): void {
@@ -236,7 +242,9 @@ export class ObsidianApiSyncWsClient {
 
   updateHashCache(path: string, content: string, is_binary: boolean = false): void {
     if (!is_binary) {
-      this.contentHashCache.set(path, fnv1a(content));
+      const h = fnv1a(content);
+      this.contentHashCache.set(path, h);
+      if (this.onHashUpdate) this.onHashUpdate(path, h);
     }
   }
 

@@ -40,9 +40,10 @@ async def api_list_versions(path: str, token_data: dict = Depends(get_current_to
 )
 async def api_restore_version(path: str, ts: int, token_data: dict = Depends(get_current_token)) -> JSONResponse:
     vault_path = await get_vault_path()
-    versions_dir = _get_versions_dir(Path(vault_path)) / path
-    
     target_file = _sanitize_path(vault_path, path)
+    vault_root = Path(vault_path).resolve()
+    safe_rel = target_file.relative_to(vault_root)
+    versions_dir = _get_versions_dir(vault_root) / safe_rel
     
     # Backup current state before restoring
     if target_file.exists():
@@ -102,9 +103,7 @@ async def api_restore_trash(trash_path: str, original_path: str, token_data: dic
     except (FileExistsError, IsADirectoryError, OSError):
         raise HTTPException(status_code=409, detail="A file already exists at the original path. Delete it first.")
         
-    if trash_file.is_dir():
-        target_file.unlink()
-        
+    target_file.unlink()
     shutil.move(str(trash_file), str(target_file))
 
     await add_audit(method="POST", path=original_path, token_id=token_data["id"], action="RESTORE_TRASH")
