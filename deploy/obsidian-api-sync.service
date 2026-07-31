@@ -1,0 +1,53 @@
+# deploy/obsidian-api-sync.service
+#
+# Example user-scoped systemd unit for Obsidian API Sync.
+#
+# INSTALLATION
+# ------------
+# 1. Copy this file to ~/.config/systemd/user/obsidian-api-sync.service
+#    (adjust the paths below to match your actual install location)
+# 2. Edit WorkingDirectory, ExecStart, and EnvironmentFile as needed.
+# 3. Enable and start:
+#      systemctl --user daemon-reload
+#      systemctl --user enable --now obsidian-api-sync
+#
+# IMPORTANT: Do NOT add --reload to ExecStart in production.
+# The reload flag spawns a watcher subprocess.  If the parent is killed
+# (SIGKILL, dropped SSH session) the watcher survives with PPID 1 and keeps
+# the socket, causing "address already in use" crash-loops on restart.
+# Use DEV=1 python main.py (or run.sh in a terminal) for development instead.
+
+[Unit]
+Description=Obsidian API Sync Server
+Documentation=https://github.com/ZenithFr/obsidian-api-sync
+After=network.target
+
+[Service]
+Type=simple
+
+# Absolute path to the server/ directory — never a relative path.
+# Using %h (home directory) keeps it portable across users.
+WorkingDirectory=%h/obsidian-api-sync/server
+
+# Activate the virtual environment and launch uvicorn directly (no --reload).
+ExecStart=%h/obsidian-api-sync/server/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Load SECRET_KEY, ADMIN_PASSWORD, and any optional settings from .env
+EnvironmentFile=%h/obsidian-api-sync/server/.env
+
+# Restart only on non-zero exit codes / signals — NOT on a clean exit or
+# intentional stop.  This prevents the "restart storm" caused by Restart=always
+# when the port is already bound (~720 failed starts/hour).
+Restart=on-failure
+RestartSec=10
+
+# Give uvicorn time to start before systemd considers it failed.
+TimeoutStartSec=30
+
+# KillMode=mixed sends SIGTERM to the main process and SIGKILL to the entire
+# cgroup on stop timeout.  This ensures uvicorn's reloader worker (if somehow
+# present) is also terminated, leaving no orphan holding the socket.
+KillMode=mixed
+
+[Install]
+WantedBy=default.target

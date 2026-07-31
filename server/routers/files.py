@@ -10,12 +10,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, FileResponse
 from pydantic import BaseModel
+import base64
 
 from auth import get_current_token
 from config import settings
 from database import add_audit, get_vault_path
+from limiter import limiter
 from routers.ws import manager
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -60,7 +62,9 @@ Use this endpoint to discover which notes exist before reading or modifying them
 Paths use forward-slash separators regardless of the host operating system.
 """,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def list_files(
+    request: Request,
     include_content: bool = False,
     token_data: dict = Depends(get_current_token),
 ) -> JSONResponse:
@@ -76,14 +80,14 @@ async def list_files(
 
     md_files = []
 
-    raw_files = list(vault_root.rglob("*.md"))
-    obsidian_dir = vault_root / ".obsidian"
-    if obsidian_dir.exists():
-        raw_files.extend(list(obsidian_dir.rglob("*")))
-        
-    unique_files = list({f.resolve(): f for f in raw_files if f.is_file()}.values())
-
-    for file in unique_files:
+    for file in vault_root.rglob("*"):
+        if not file.is_file():
+            continue
+            
+        parts = file.relative_to(vault_root).parts
+        # Skip hidden files/folders (starting with dot) UNLESS it is the .obsidian folder
+        if any(p.startswith(".") and p != ".obsidian" for p in parts):
+            continue
         relative = str(file.relative_to(vault_root)).replace("\\", "/")
         
         # Don't sync our own token to prevent syncing across different environments
@@ -94,11 +98,16 @@ async def list_files(
             try:
                 # Guard against reading enormous files into memory
                 if file.stat().st_size > MAX_FILE_SIZE_BYTES:
+                    md_files.append({"path": relative, "content_omitted": True})
                     continue
-                content = file.read_text(encoding="utf-8")
-                md_files.append({"path": relative, "content": content})
-            except UnicodeDecodeError:
-                pass # Skip binary files
+                try:
+                    content = file.read_text(encoding="utf-8")
+                    md_files.append({"path": relative, "content": content})
+                except UnicodeDecodeError:
+                    # Binary file
+                    raw_bytes = file.read_bytes()
+                    b64 = base64.b64encode(raw_bytes).decode("ascii")
+                    md_files.append({"path": relative, "content_base64": b64})
             except Exception:
                 pass
         else:
@@ -131,7 +140,7 @@ async def list_files(
 @router.get(
     "/{path:path}",
     summary="Read the raw content of a markdown note",
-    description="""Returns the complete UTF-8 text content of a single markdown file.
+    description="""Returns the raw file content.
 
 The `path` parameter is the vault-relative path using forward slashes
 (e.g. `journal/2026-06-03.md`).
@@ -139,10 +148,12 @@ The `path` parameter is the vault-relative path using forward slashes
 Returns HTTP 404 if the file does not exist.
 """,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def read_file(
+    request: Request,
     path: str,
     token_data: dict = Depends(get_current_token),
-) -> JSONResponse:
+) -> FileResponse:
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
 
@@ -152,12 +163,9 @@ async def read_file(
     if not target.is_file():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
 
-    content = target.read_text(encoding="utf-8")
-    size_bytes = target.stat().st_size
-
     await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ")
 
-    return JSONResponse(content={"path": path, "content": content, "size_bytes": size_bytes})
+    return FileResponse(path=target)
 
 
 # -- POST /api/files/{path} ---------------------------------------------------
@@ -176,6 +184,7 @@ All connected Obsidian clients instantly receive a `FILE_CHANGED` WebSocket broa
 """,
     status_code=status.HTTP_200_OK,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def write_file(
     path: str,
     request: Request,
@@ -195,24 +204,24 @@ async def write_file(
 
     try:
         content = body_bytes.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Request body is not valid UTF-8: {exc}",
-        ) from exc
+        is_binary = False
+    except UnicodeDecodeError:
+        content = None
+        is_binary = True
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    target.write_bytes(body_bytes)
     size_bytes = target.stat().st_size
 
     ts = _utcnow_iso()
+    # For binary files, we do not broadcast the content. The client will fetch it.
     await manager.broadcast(
         {"type": "FILE_CHANGED", "path": path, "content": content, "source": "rest", "ts": ts}
     )
 
     await add_audit(method="POST", path=path, token_id=token_data["id"], action="WRITE")
 
-    return JSONResponse(content={"path": path, "status": "written", "size_bytes": size_bytes})
+    return JSONResponse(content={"path": path, "status": "written", "size_bytes": size_bytes, "is_binary": is_binary})
 
 
 # -- POST /api/files/rename ---------------------------------------------------
@@ -229,7 +238,9 @@ class RenamePayload(BaseModel):
     description="Renames or moves a file to a new path. Broadcasts FILE_RENAMED to all WebSocket clients.",
     status_code=status.HTTP_200_OK,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def rename_file(
+    request: Request,
     payload: RenamePayload,
     token_data: dict = Depends(get_current_token),
 ) -> JSONResponse:
@@ -267,7 +278,9 @@ async def rename_file(
     description="Permanently deletes the specified markdown file. Returns HTTP 404 if the file does not exist.",
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def delete_file(
+    request: Request,
     path: str,
     token_data: dict = Depends(get_current_token),
 ) -> Response:
