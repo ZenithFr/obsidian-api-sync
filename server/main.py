@@ -76,11 +76,15 @@ def _validate_vault_path(path: str) -> None:
     """
     Reject obviously dangerous vault paths.
 
+    Both the raw path *and* the fully-resolved path are checked so that
+    ``..``-based traversals that resolve into sensitive directories (e.g.
+    ``../../etc``) are also rejected.
+
     Raises:
         HTTPException 400: If the path starts with a sensitive system directory.
     """
-    resolved = str(Path(path).resolve())
-    if _DANGEROUS_PATH_PATTERNS.match(resolved) or _DANGEROUS_PATH_PATTERNS.match(path):
+    raw_resolved = str(Path(path).expanduser().resolve())
+    if _DANGEROUS_PATH_PATTERNS.match(path) or _DANGEROUS_PATH_PATTERNS.match(raw_resolved):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -96,7 +100,15 @@ def _validate_vault_path(path: str) -> None:
 async def lifespan(app: FastAPI):
     await init_db()
     vault_path = await get_vault_path()
-    Path(vault_path).mkdir(parents=True, exist_ok=True)
+    vault_root = Path(vault_path)  # always absolute after init_db
+    vault_root.mkdir(parents=True, exist_ok=True)
+    md_count = sum(1 for _ in vault_root.rglob("*.md"))
+    if md_count == 0:
+        logger.warning(
+            "Vault contains no .md files: %s — "
+            "check that vault_path is correct (run: GET /dashboard/vault-path)",
+            vault_path,
+        )
     yield
 
 
@@ -288,12 +300,12 @@ async def api_set_vault_path(request: Request) -> JSONResponse:
     path = path.strip()
     _validate_vault_path(path)   # #9: block dangerous system paths
 
-    await set_vault_path(path)
-    Path(path).mkdir(parents=True, exist_ok=True)
+    normalized_path = await set_vault_path(path)
+    Path(normalized_path).mkdir(parents=True, exist_ok=True)
 
-    await add_audit(method="POST", path=path, token_id=None, action="SET_VAULT_PATH")
+    await add_audit(method="POST", path=normalized_path, token_id=None, action="SET_VAULT_PATH")
 
-    return JSONResponse(content={"status": "ok", "vault_path": path})
+    return JSONResponse(content={"status": "ok", "vault_path": normalized_path})
 
 
 # -- Dashboard: Tokens --------------------------------------------------------
@@ -467,9 +479,13 @@ async def obsidian_web_app(request: Request) -> Response:
 # -- Dev entrypoint -----------------------------------------------------------
 
 if __name__ == "__main__":
+    # reload=True spawns a watcher subprocess; if the parent is SIGKILLed the
+    # worker survives with PPID 1 and holds the port, causing crash-loops when
+    # the service manager tries to restart.  Only enable reload in dev mode.
+    _dev_mode = os.environ.get("DEV", "").strip().lower() in ("1", "true", "yes")
     uvicorn.run(
         "main:app",
         host=settings.HOST,
         port=settings.PORT,
-        reload=True,
+        reload=_dev_mode,
     )

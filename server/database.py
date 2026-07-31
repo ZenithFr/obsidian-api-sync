@@ -1,4 +1,4 @@
-﻿"""
+"""
 database.py — Async SQLite access layer for Obsidian API Sync API.
 
 All DB operations are fully async via aiosqlite.  The vault path is stored in
@@ -11,16 +11,22 @@ is returned once at creation and never stored.
 """
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import aiosqlite
 
 from config import settings
 
+logger = logging.getLogger(__name__)
+
 # Module-level constant so callers can reference the configured DB file path.
-DATABASE_PATH: str = settings.DB_PATH
+# Resolved to an absolute path so aiosqlite opens the same file regardless of
+# the process working directory (fixes cwd-coupling for the DB itself).
+DATABASE_PATH: str = str(Path(settings.DB_PATH).expanduser().resolve())
 
 
 # -- Schema -------------------------------------------------------------------
@@ -85,11 +91,34 @@ async def init_db() -> None:
                 "ALTER TABLE tokens ADD COLUMN token_prefix TEXT NOT NULL DEFAULT ''"
             )
 
+        # Seed vault_path as an absolute, cwd-independent path.
+        abs_vault = str(Path(settings.DEFAULT_VAULT_PATH).expanduser().resolve())
         await db.execute(
             "INSERT OR IGNORE INTO server_config (key, value) VALUES ('vault_path', ?)",
-            (settings.DEFAULT_VAULT_PATH,),
+            (abs_vault,),
         )
+
+        # P3: auto-generate a first-run token so a fresh install can
+        # authenticate immediately without touching the database manually.
+        async with db.execute("SELECT COUNT(*) AS n FROM tokens") as cursor:
+            row = await cursor.fetchone()
+            token_count: int = row["n"]
+
         await db.commit()
+
+    if token_count == 0:
+        raw_token = await create_token(label="first-run")
+        logger.warning(
+            "\n"
+            "=================================================================\n"
+            " FIRST-RUN TOKEN (shown once — copy it now):\n"
+            " %s\n"
+            "=================================================================\n"
+            " Configure this token in the Obsidian plugin or API client.\n"
+            " You can also create additional tokens via the /dashboard.\n"
+            "=================================================================",
+            raw_token,
+        )
 
 
 # -- Vault Path ---------------------------------------------------------------
@@ -106,14 +135,22 @@ async def get_vault_path() -> str:
             return row["value"]
 
 
-async def set_vault_path(path: str) -> None:
+async def set_vault_path(path: str) -> str:
+    """
+    Normalize *path* to an absolute, cwd-independent location and persist it.
+
+    The resolved absolute path is returned so callers (e.g. the dashboard
+    endpoint) can display exactly what was stored.
+    """
+    normalized = str(Path(path).expanduser().resolve())
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute(
             "INSERT INTO server_config (key, value) VALUES ('vault_path', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (path,),
+            (normalized,),
         )
         await db.commit()
+    return normalized
 
 
 # -- Token Management ---------------------------------------------------------
