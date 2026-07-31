@@ -20,6 +20,9 @@ from config import settings
 from database import add_audit, get_vault_path
 from routers.ws import manager
 from version_control import save_version, move_to_trash, _get_versions_dir
+from locks import file_locks
+import os
+from uuid import uuid4
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -105,7 +108,12 @@ async def list_files(
     unique_files = list({f.resolve(): f for f in raw_files if f.is_file()}.values())
 
     if include_content:
-        total_size = sum(f.stat().st_size for f in unique_files)
+        total_size = 0
+        for f in unique_files:
+            try:
+                total_size += f.stat().st_size
+            except FileNotFoundError:
+                pass
         if total_size > 50 * 1024 * 1024:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
@@ -187,14 +195,17 @@ async def read_file(
     if not target.is_file():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
 
-    size_bytes = target.stat().st_size
     try:
-        content = await asyncio.to_thread(target.read_text, encoding="utf-8")
-        is_binary = False
-    except UnicodeDecodeError:
-        raw_bytes = await asyncio.to_thread(target.read_bytes)
-        content = base64.b64encode(raw_bytes).decode("ascii")
-        is_binary = True
+        size_bytes = target.stat().st_size
+        try:
+            content = await asyncio.to_thread(target.read_text, encoding="utf-8")
+            is_binary = False
+        except UnicodeDecodeError:
+            raw_bytes = await asyncio.to_thread(target.read_bytes)
+            content = base64.b64encode(raw_bytes).decode("ascii")
+            is_binary = True
+    except FileNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
 
     await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ")
 
@@ -242,34 +253,40 @@ async def write_file(
         is_binary = True
         content = base64.b64encode(body_bytes).decode("ascii")
 
-    # Conflict detection
-    if target.exists() and x_base_hash and not is_binary:
+    lock = await file_locks.acquire(str(target))
+    async with lock:
+        # Conflict detection
+        if target.exists() and x_base_hash and not is_binary:
+            try:
+                current_text = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
+                current_hash = _fnv1a(current_text)
+                if current_hash != x_base_hash:
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "type": "CONFLICT",
+                            "path": path,
+                            "server_content": current_text,
+                            "client_content": content,
+                        }
+                    )
+            except OSError:
+                pass  # Proceed if read fails
+    
+        # Save version before modifying existing file
+        if target.exists():
+            await asyncio.to_thread(save_version, Path(vault_path), path)
+    
+        target.parent.mkdir(parents=True, exist_ok=True)
         try:
-            current_text = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
-            current_hash = _fnv1a(current_text)
-            if current_hash != x_base_hash:
-                return JSONResponse(
-                    status_code=409,
-                    content={
-                        "type": "CONFLICT",
-                        "path": path,
-                        "server_content": current_text,
-                        "client_content": content,
-                    }
-                )
-        except OSError:
-            pass  # Proceed if read fails
-
-    # Save version before modifying existing file
-    if target.exists():
-        await asyncio.to_thread(save_version, Path(vault_path), path)
-
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        await asyncio.to_thread(target.write_bytes, body_bytes)
-    except IsADirectoryError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
-    size_bytes = target.stat().st_size
+            def _atomic_write():
+                tmp = target.with_name(f"{target.name}.{uuid4().hex}.tmp")
+                tmp.write_bytes(body_bytes)
+                os.replace(tmp, target)
+            await asyncio.to_thread(_atomic_write)
+        except IsADirectoryError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
+        size_bytes = target.stat().st_size
 
     ts = _utcnow_iso()
     await manager.broadcast(
@@ -303,23 +320,28 @@ async def rename_file(
     target_old = _sanitize_path(vault_path, payload.old_path)
     target_new = _sanitize_path(vault_path, payload.new_path)
 
-    if not target_old.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {payload.old_path}")
-
-    if target_old.exists():
-        save_version(Path(vault_path), payload.old_path)
-
-    target_new.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        await asyncio.to_thread(target_old.rename, target_new)
-    except IsADirectoryError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
-    
-    old_versions_dir = _get_versions_dir(Path(vault_path)) / payload.old_path
-    if old_versions_dir.exists():
-        new_versions_dir = _get_versions_dir(Path(vault_path)) / payload.new_path
-        new_versions_dir.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(old_versions_dir.rename, new_versions_dir)
+    lock_old = await file_locks.acquire(str(target_old))
+    lock_new = await file_locks.acquire(str(target_new))
+    locks = [lock_old, lock_new] if str(target_old) < str(target_new) else [lock_new, lock_old]
+    async with locks[0]:
+        async with locks[1]:
+            if not target_old.exists():
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {payload.old_path}")
+        
+            if target_old.exists():
+                await asyncio.to_thread(save_version, Path(vault_path), payload.old_path)
+        
+            target_new.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                await asyncio.to_thread(target_old.rename, target_new)
+            except IsADirectoryError:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
+            
+            old_versions_dir = _get_versions_dir(Path(vault_path)) / payload.old_path
+            if old_versions_dir.exists():
+                new_versions_dir = _get_versions_dir(Path(vault_path)) / payload.new_path
+                new_versions_dir.parent.mkdir(parents=True, exist_ok=True)
+                await asyncio.to_thread(old_versions_dir.rename, new_versions_dir)
 
     ts = _utcnow_iso()
     await manager.broadcast(
@@ -352,13 +374,15 @@ async def delete_file(
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
 
-    if not target.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
-
-    if not target.is_file():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
-
-    await asyncio.to_thread(move_to_trash, Path(vault_path), path)
+    lock = await file_locks.acquire(str(target))
+    async with lock:
+        if not target.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
+    
+        if not target.is_file():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
+    
+        await asyncio.to_thread(move_to_trash, Path(vault_path), path)
 
     ts = _utcnow_iso()
     await manager.broadcast({"type": "FILE_DELETED", "path": path, "source": "rest", "ts": ts})
