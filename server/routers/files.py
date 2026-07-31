@@ -9,7 +9,6 @@ connected clients through the shared ConnectionManager instance in ws.py.
 from datetime import datetime, timezone
 from pathlib import Path
 import base64
-import hashlib
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
 from fastapi.responses import JSONResponse, Response
@@ -48,6 +47,16 @@ def _sanitize_path(vault_path: str, relative_path: str) -> Path:
             detail=f"Path traversal detected: '{relative_path}' escapes the vault root.",
         )
     return target
+
+
+def _fnv1a(content: str) -> str:
+    """FNV-1a 32-bit hash — matches the TypeScript client exactly.
+    Used for conflict detection only; not a security primitive."""
+    h = 0x811c9dc5
+    for ch in content.encode("utf-8", errors="replace"):
+        h ^= ch
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return format(h, '08x')
 
 
 # -- GET /api/files -----------------------------------------------------------
@@ -216,7 +225,7 @@ async def write_file(
     if target.exists() and x_base_hash and not is_binary:
         try:
             current_text = target.read_text(encoding="utf-8", errors="replace")
-            current_hash = hashlib.md5(current_text.encode("utf-8", errors="replace")).hexdigest()[:16]
+            current_hash = _fnv1a(current_text)
             if current_hash != x_base_hash:
                 return JSONResponse(
                     status_code=409,

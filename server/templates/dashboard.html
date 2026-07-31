@@ -1006,18 +1006,36 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ── History ──────────────────────────────────────────────────────── */
 
 async function loadHistory() {
-  const resp = await apiFetch('/api/files');
-  const data = await resp.json();
-  const files = data.files || [];
   const container = document.getElementById('history-file-list');
+  container.innerHTML = '<p class="text-muted text-sm py-4 text-center">Loading…</p>';
+
+  let resp, data;
+  try {
+    resp = await apiFetch('/api/files');
+    data = await resp.json();
+  } catch(e) {
+    container.innerHTML = '<p class="text-error text-sm py-4 text-center">Failed to load file list.</p>';
+    return;
+  }
+
+  // /api/files returns plain strings when include_content=false (the default)
+  const files = (data.files || []).filter(f => typeof f === 'string');
   container.innerHTML = '';
-  for (const file of files) {
+
+  if (files.length === 0) {
+    container.innerHTML = '<p class="text-muted text-sm py-4 text-center">No files in vault.</p>';
+    return;
+  }
+
+  for (const filePath of files) {
     const row = document.createElement('div');
     row.className = 'flex items-center justify-between py-2 px-3 rounded-md hover:bg-surface/50 cursor-pointer';
+    const safeDisplay = escapeHtml(filePath);
     row.innerHTML = `
-      <span class="text-sm font-mono text-muted">${file.path}</span>
-      <button class="btn-secondary text-xs !h-8 !px-3" onclick="loadFileVersions('${file.path}')">Versions</button>
+      <span class="text-sm font-mono text-muted">${safeDisplay}</span>
+      <button class="btn-secondary text-xs !h-8 !px-3">Versions</button>
     `;
+    row.querySelector('button').addEventListener('click', () => loadFileVersions(filePath));
     container.appendChild(row);
   }
 }
@@ -1070,38 +1088,62 @@ document.getElementById('history-search')?.addEventListener('input', function() 
 /* ── Trash ────────────────────────────────────────────────────────── */
 
 async function loadTrash() {
-  const resp = await apiFetch('/api/history/trash');
-  const data = await resp.json();
-  const items = data.trash || [];
   const container = document.getElementById('trash-list-content');
+  container.innerHTML = '<p class="text-muted text-sm py-4 text-center">Loading…</p>';
 
+  let resp, data;
+  try {
+    resp = await apiFetch('/api/history/trash');
+    data = await resp.json();
+  } catch(e) {
+    container.innerHTML = '<p class="text-error text-sm py-4 text-center">Failed to load trash.</p>';
+    return;
+  }
+
+  const items = data.trash || [];
   if (items.length === 0) {
     container.innerHTML = '<p class="text-muted text-sm py-4 text-center">The trash is empty.</p>';
     return;
   }
 
-  const table = `
-    <table class="data-table w-full">
-      <thead><tr><th>Original Path</th><th>Deleted</th><th>Size</th><th>Actions</th></tr></thead>
-      <tbody>
-        ${items.map(f => `
-          <tr>
-            <td class="font-mono text-xs">${f.original_path}</td>
-            <td>${new Date(f.ts).toLocaleString()}</td>
-            <td>${(f.size / 1024).toFixed(1)} KB</td>
-            <td class="flex gap-2">
-              <button class="btn-link text-xs" onclick="restoreTrash('${f.trash_path}','${f.original_path}')">Restore</button>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>`;
-  container.innerHTML = table;
+  const table = document.createElement('table');
+  table.className = 'data-table w-full';
+  table.innerHTML = `
+    <thead><tr>
+      <th>Original Path</th><th>Deleted</th><th>Size</th><th>Actions</th>
+    </tr></thead>
+    <tbody></tbody>`;
+
+  const tbody = table.querySelector('tbody');
+  for (const f of items) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="font-mono text-xs">${escapeHtml(f.original_path)}</td>
+      <td>${new Date(f.ts).toLocaleString()}</td>
+      <td>${(f.size / 1024).toFixed(1)} KB</td>
+      <td><button class="btn-link text-xs">Restore</button></td>`;
+    tr.querySelector('button').addEventListener('click', () => restoreTrash(f.trash_path, f.original_path));
+    tbody.appendChild(tr);
+  }
+
+  container.innerHTML = '';
+  container.appendChild(table);
 }
 
 async function restoreTrash(trashPath, originalPath) {
-  await apiFetch(`/api/history/restore-trash?trash_path=${encodeURIComponent(trashPath)}&original_path=${encodeURIComponent(originalPath)}`, { method: 'POST' });
-  showToast(`Restored: ${originalPath}`);
-  loadTrash();
+  const params = new URLSearchParams({ trash_path: trashPath, original_path: originalPath });
+  try {
+    const resp = await apiFetch(`/api/history/restore-trash?${params}`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showToast(err.detail || 'Restore failed.', 'error');
+      return;
+    }
+    showToast(`✅ Restored: ${originalPath}`);
+    loadTrash();
+  } catch(e) {
+    showToast('Restore failed.', 'error');
+  }
 }
 
 </script>

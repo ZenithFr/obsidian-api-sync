@@ -12,7 +12,6 @@ Security hardening:
 """
 
 import asyncio
-import hashlib
 import json
 import logging
 import shutil
@@ -30,9 +29,14 @@ from version_control import save_version, move_to_trash
 
 logger = logging.getLogger(__name__)
 
-def _simple_hash(content: str) -> str:
-    """Fast MD5 hash (first 16 chars) used for conflict detection — not security."""
-    return hashlib.md5(content.encode("utf-8", errors="replace")).hexdigest()[:16]
+def _fnv1a(content: str) -> str:
+    """FNV-1a 32-bit hash — matches the TypeScript client implementation exactly.
+    Used for conflict detection only; not a security primitive."""
+    h = 0x811c9dc5
+    for ch in content.encode("utf-8", errors="replace"):
+        h ^= ch
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return format(h, '08x')
 
 router = APIRouter()
 
@@ -205,7 +209,7 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                 if base_hash and not is_binary and target_file.exists():
                     try:
                         current_text = target_file.read_text(encoding="utf-8", errors="replace")
-                        current_hash = _simple_hash(current_text)
+                        current_hash = _fnv1a(current_text)
                         if current_hash != base_hash:
                             # Send conflict back to the originating client only
                             await websocket.send_json({

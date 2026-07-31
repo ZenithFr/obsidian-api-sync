@@ -79,22 +79,25 @@ async def api_list_trash(token_data: dict = Depends(get_current_token)) -> JSONR
 )
 async def api_restore_trash(trash_path: str, original_path: str, token_data: dict = Depends(get_current_token)) -> JSONResponse:
     vault_path = await get_vault_path()
-    trash_dir = _get_trash_dir(Path(vault_path))
-    
-    # Prevent traversal in trash_path
-    trash_file = (trash_dir / trash_path).resolve()
+    vault_root = Path(vault_path).resolve()
+    trash_dir = _get_trash_dir(vault_root)
+
+    # trash_path is vault-relative (e.g. ".sync_trash/foo/1234_foo.md")
+    trash_file = (vault_root / trash_path).resolve()
+
+    # Security: must stay inside trash_dir
     if not str(trash_file).startswith(str(trash_dir) + "/"):
-        raise HTTPException(status_code=400, detail="Invalid trash path")
-        
+        raise HTTPException(status_code=400, detail="Invalid trash path: must reside inside the trash directory")
+
     if not trash_file.exists():
         raise HTTPException(status_code=404, detail="File not found in trash")
-        
+
     target_file = _sanitize_path(vault_path, original_path)
     if target_file.exists():
-        raise HTTPException(status_code=409, detail="A file already exists at the original path")
-        
+        raise HTTPException(status_code=409, detail="A file already exists at the original path. Delete it first.")
+
     target_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(trash_file), str(target_file))
-    
+
     await add_audit(method="POST", path=original_path, token_id=token_data["id"], action="RESTORE_TRASH")
     return JSONResponse(content={"status": "restored", "path": original_path})
