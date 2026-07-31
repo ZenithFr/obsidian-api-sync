@@ -47,6 +47,7 @@ from database import (
 from routers.files import router as files_router
 from routers.ws import router as ws_router
 from routers.versions import router as versions_router
+from routers.snapshots import router as snapshots_router
 
 logger = logging.getLogger(__name__)
 
@@ -93,12 +94,25 @@ def _validate_vault_path(path: str) -> None:
 
 # -- Lifespan -----------------------------------------------------------------
 
+async def _snapshot_scheduler():
+    while True:
+        await asyncio.sleep(24 * 60 * 60)
+        try:
+            vault_path = Path(await get_vault_path())
+            from routers.snapshots import _create_snapshot
+            await asyncio.to_thread(_create_snapshot, vault_path, False)
+            logger.info("Automatic 24-hour vault snapshot created.")
+        except Exception as e:
+            logger.error(f"Failed to create automatic snapshot: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     vault_path = await get_vault_path()
     Path(vault_path).mkdir(parents=True, exist_ok=True)
+    task = asyncio.create_task(_snapshot_scheduler())
     yield
+    task.cancel()
 
 
 # -- Application --------------------------------------------------------------
@@ -157,6 +171,7 @@ if _cors_origins:
 app.include_router(files_router)
 app.include_router(ws_router)
 app.include_router(versions_router)
+app.include_router(snapshots_router)
 
 # -- Static Files -------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, requestUrl } from 'obsidian';
 import { WsState } from './ws-client';
 import type { QuickImportConfig } from './types';
 
@@ -34,6 +34,7 @@ const TAB_DEFINITIONS = [
   { id: 'sync',       label: '⚙️ Sync' },
   { id: 'filters',    label: '🔍 Filters' },
   { id: 'configsync', label: '📂 Config Sync' },
+  { id: 'recovery',   label: '🕒 Vault Recovery' },
 ] as const;
 
 type TabId = typeof TAB_DEFINITIONS[number]['id'];
@@ -84,6 +85,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
         case 'sync':       this.renderSyncTab(contentEl); break;
         case 'filters':    this.renderFiltersTab(contentEl); break;
         case 'configsync': this.renderConfigSyncTab(contentEl); break;
+        case 'recovery':   this.renderRecoveryTab(contentEl); break;
       }
     };
 
@@ -369,6 +371,92 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+  }
+
+  // ── Tab: Vault Recovery ─────────────────────────────────────────────────────
+  
+  private async renderRecoveryTab(el: HTMLElement): Promise<void> {
+    const desc = el.createEl('p', {
+      text: 'Manage and restore Vault Snapshots. Restoring a snapshot will completely overwrite your current vault state.',
+    });
+    desc.style.cssText = 'color:var(--text-muted);font-size:0.9em;margin-bottom:16px;';
+
+    new Setting(el)
+      .setName('Take Snapshot')
+      .setDesc('Manually create a point-in-time zip snapshot of your entire vault.')
+      .addButton(btn => 
+        btn.setButtonText('Backup Now').setCta().onClick(async () => {
+          if (!this.plugin.settings.serverUrl || !this.plugin.settings.apiToken) {
+            new Notice('❌ Please configure Connection tab first.');
+            return;
+          }
+          new Notice('ObsidianApiSync: Creating snapshot...');
+          try {
+            await requestUrl({
+              url: `${this.plugin.settings.serverUrl.replace(/\/$/, '')}/api/snapshots/create`,
+              method: 'POST',
+              headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
+            });
+            new Notice('✅ Snapshot created successfully!');
+            // Re-render to show the new snapshot
+            el.empty();
+            this.renderRecoveryTab(el);
+          } catch (e) {
+            new Notice('❌ Failed to create snapshot.');
+          }
+        })
+      );
+
+    const listContainer = el.createDiv();
+    listContainer.createEl('h3', { text: 'Available Snapshots', cls: 'setting-item-heading' });
+    
+    // Fetch snapshots
+    if (this.plugin.settings.serverUrl && this.plugin.settings.apiToken) {
+      try {
+        const resp = await requestUrl({
+          url: `${this.plugin.settings.serverUrl.replace(/\/$/, '')}/api/snapshots`,
+          headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
+        });
+        const snaps = resp.json.snapshots;
+        if (!snaps || snaps.length === 0) {
+          const p = listContainer.createEl('p', { text: 'No snapshots available.' });
+          p.style.color = 'var(--text-muted)';
+        } else {
+          snaps.forEach((snap: any) => {
+            const row = listContainer.createDiv();
+            row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid var(--background-modifier-border);';
+            const info = row.createDiv();
+            const date = new Date(snap.date).toLocaleString();
+            info.createEl('div', { text: date, cls: 'setting-item-name' });
+            info.createEl('div', { text: `${(snap.size_bytes / 1024 / 1024).toFixed(2)} MB${snap.is_pre_restore ? ' (Safety Pre-Restore)' : ''}`, cls: 'setting-item-description' });
+            
+            const btn = row.createEl('button', { text: 'Restore' });
+            btn.style.color = 'var(--text-error)';
+            btn.onclick = async () => {
+              if (confirm(`🚨 WARNING: This will completely WIPE your current vault and replace it with this snapshot (${date}). A safety backup will be taken automatically before wiping. Are you absolutely sure?`)) {
+                new Notice('ObsidianApiSync: Restoring vault from snapshot...');
+                try {
+                  await requestUrl({
+                    url: `${this.plugin.settings.serverUrl.replace(/\/$/, '')}/api/snapshots/restore/${snap.id}`,
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
+                  });
+                  new Notice('✅ Restore initiated! The vault will reload momentarily.');
+                } catch(e) {
+                  new Notice('❌ Failed to restore snapshot.');
+                }
+              }
+            };
+          });
+        }
+      } catch (e) {
+        const p = listContainer.createEl('p', { text: 'Failed to load snapshots. Check connection.' });
+        p.style.color = 'var(--text-error)';
+      }
+    } else {
+      const p = listContainer.createEl('p', { text: 'Connect to server to view snapshots.' });
+      p.style.color = 'var(--text-muted)';
+    }
   }
 
   // ── Private Helpers ─────────────────────────────────────────────────────────

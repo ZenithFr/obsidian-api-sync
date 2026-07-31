@@ -191,6 +191,19 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       ).open();
     };
 
+    this.wsClient.onVaultRestored = async (payload) => {
+      new Notice(`ObsidianApiSync: Server vault restored from snapshot ${payload.snapshot_id}! Re-syncing...`, 8000);
+      
+      // Reset caches
+      this.contentHashCache = {};
+      this.wsClient.contentHashCache.clear();
+      
+      // Pull all files after a brief delay to allow server to finish sending broadcasts
+      setTimeout(() => {
+        this.pullAllFiles();
+      }, 1000);
+    };
+
     this.wsClient.onFileChanged = async (payload) => {
       try {
         const dec = await this.decryptInboundContent(payload.path, payload.content, !!payload.is_binary);

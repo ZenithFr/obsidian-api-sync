@@ -9,6 +9,7 @@ import {
   ErrorPayload,
   InboundPayload,
   OutboundPayload,
+  VaultRestoredPayload,
 } from './types';
 import { fnv1a } from './utils';
 
@@ -40,6 +41,7 @@ export class ObsidianApiSyncWsClient {
   public onFileDeleted?: (payload: FileDeletedPayload) => void;
   public onFileRenamed?: (payload: FileRenamedPayload) => void;
   public onFolderCreated?: (payload: FolderCreatedPayload) => void;
+  public onVaultRestored?: (payload: VaultRestoredPayload) => void;
   public onStateChange: ((state: WsState) => void) | null = null;
   public onConnected: ((clientId: string) => void) | null = null;
   public onError: ((payload: ErrorPayload) => void) | null = null;
@@ -305,6 +307,9 @@ export class ObsidianApiSyncWsClient {
         break;
       case 'FOLDER_CREATED':
         if (this.onFolderCreated) this.onFolderCreated(payload as FolderCreatedPayload);
+        break;
+      case 'VAULT_RESTORED':
+        if (this.onVaultRestored) this.onVaultRestored(payload as VaultRestoredPayload);
         break;
       case 'PING':
         // Respond to server keepalive pings

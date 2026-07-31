@@ -71,6 +71,12 @@ export interface FolderCreatedPayload {
   ts: string;
 }
 
+export interface VaultRestoredPayload {
+  type: 'VAULT_RESTORED';
+  snapshot_id: string;
+  ts: string;
+}
+
 export interface ConnectedPayload {
   type: 'CONNECTED';
   client_id: string;
@@ -113,6 +119,7 @@ export type InboundPayload =
   | FileDeletedPayload
   | FileRenamedPayload
   | FolderCreatedPayload
+  | VaultRestoredPayload
   | { type: 'PING'; ts: string }
   | { type: 'ERROR'; code: string; message: string }
   | { type: 'CONNECTED'; client_id: string };
