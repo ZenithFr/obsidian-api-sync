@@ -424,7 +424,7 @@
 
       <!-- Editor pane (hidden by default) -->
       <div id="editor-container" class="flex-1 hidden flex-col" style="min-height:0">
-        <div id="editor-mount" class="flex-1 overflow-hidden" style="display:flex; flex-direction:column;"></div>
+        <div id="editor-mount" class="flex-1 overflow-hidden" style="position: relative;"></div>
         <textarea id="editor-textarea" style="display:none;"></textarea>
         <div id="editor-statusbar">
           <span id="stat-words">0 words</span>
@@ -474,8 +474,8 @@
             }
           }),
           EditorView.theme({
-            "&": { height: "100%", flex: "1 1 auto", minHeight: "300px", fontSize: "14px" },
-            ".cm-scroller": { overflow: "auto", height: "100%", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" },
+            "&": { height: "100%", width: "100%", fontSize: "14px" },
+            ".cm-scroller": { overflow: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" },
             "&.cm-focused": { outline: "none" }
           })
         ]
