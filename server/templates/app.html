@@ -423,9 +423,8 @@
       </div>
 
       <!-- Editor pane (hidden by default) -->
-      <div id="editor-container" class="flex-1 hidden flex-col" style="min-height:0">
-        <div id="editor-mount" class="flex-1 overflow-hidden" style="position: relative;"></div>
-        <textarea id="editor-textarea" style="display:none;"></textarea>
+      <div id="editor-container" class="flex-1 hidden flex-col" style="min-height:0; position: relative;">
+        <textarea id="editor-textarea" class="flex-1"></textarea>
         <div id="editor-statusbar">
           <span id="stat-words">0 words</span>
           <span id="stat-chars">0 chars</span>
@@ -451,41 +450,19 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <meta name="vault-path" content="{{ vault_path }}">
   <script src="/static/js/app.js"></script>
-  
-  <script type="module">
-    import { EditorView, basicSetup } from "https://esm.sh/codemirror@6.0.1";
-    import { markdown } from "https://esm.sh/@codemirror/lang-markdown@6.2.5";
-    import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark@6.1.2";
-    import { EditorState } from "https://esm.sh/@codemirror/state@6.4.1";
+  <!-- CodeMirror 5 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
 
-    window.initCodeMirror = function(parentEl, initialContent, onChange) {
-      // Clear previous editor if any
-      parentEl.innerHTML = '';
-      
-      const state = EditorState.create({
-        doc: initialContent,
-        extensions: [
-          basicSetup,
-          markdown(),
-          oneDark,
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              onChange(update.state.doc.toString());
-            }
-          }),
-          EditorView.theme({
-            "&": { height: "100%", width: "100%", fontSize: "14px" },
-            ".cm-scroller": { overflow: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" },
-            "&.cm-focused": { outline: "none" }
-          })
-        ]
-      });
-      const view = new EditorView({
-        state,
-        parent: parentEl
-      });
-      return view;
-    };
-  </script>
+  <style>
+    /* Make CM5 fill the container */
+    .CodeMirror {
+      height: 100%;
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 14px;
+    }
+  </style>
 </body>
 </html>

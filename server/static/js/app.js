@@ -648,7 +648,8 @@ async function saveCurrentFile() {
   if (!state.currentFile) return;
   const safe = sanitizeFilePath(state.currentFile);
   if (!safe) return;
-  const content = state.cmView ? state.cmView.state.doc.toString() : document.getElementById('editor-textarea').value;
+
+  const content = state.cmView ? state.cmView.getValue() : document.getElementById('editor-textarea').value;
   // 10 MB guard — mirrors server MAX_FILE_SIZE_BYTES (DoS defense)
   if (new Blob([content]).size > 10 * 1024 * 1024) {
     showToast('File too large to save (max 10 MB).', 'error');
@@ -807,33 +808,29 @@ function setMode(mode) {
     btnReading.classList.remove('active-mode');
     btnEditing.classList.add('active-mode');
 
-    if (window.initCodeMirror) {
+    if (window.CodeMirror) {
         if (!state.cmView) {
-            state.cmView = window.initCodeMirror(
-                document.getElementById('editor-mount'), 
-                state.currentContent,
-                (newContent) => {
-                    state.currentContent = newContent;
-                    state.unsaved = true;
-                    updateEditorStats();
-                    document.getElementById('save-status').textContent = 'Unsaved changes';
-                    document.getElementById('btn-save').classList.remove('hidden');
-                }
-            );
-        } else {
-            if (state.cmView.state.doc.toString() !== state.currentContent) {
-                state.cmView.dispatch({
-                    changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent},
-                    selection: {anchor: 0}
-                });
-            }
+            state.cmView = CodeMirror.fromTextArea(document.getElementById('editor-textarea'), {
+                mode: 'markdown',
+                theme: 'material-darker',
+                lineWrapping: true,
+                viewportMargin: Infinity
+            });
+            state.cmView.on('change', (cm) => {
+                state.currentContent = cm.getValue();
+                state.unsaved = true;
+                updateEditorStats();
+                document.getElementById('save-status').textContent = 'Unsaved changes';
+                document.getElementById('btn-save').classList.remove('hidden');
+            });
+        }
+        if (state.cmView.getValue() !== state.currentContent) {
+            state.cmView.setValue(state.currentContent);
+            // Move cursor to top to avoid jumping
+            state.cmView.setCursor(0, 0);
         }
         state.cmView.focus();
-        const textarea = document.getElementById('editor-textarea');
-        if (textarea) {
-            textarea.style.display = 'none';
-            textarea.classList.remove('flex-1');
-        }
+        // CM5 hides the original textarea automatically
     } else {
         const textarea = document.getElementById('editor-textarea');
         textarea.style.display = 'block';
@@ -878,15 +875,11 @@ function updateEditorContent() {
     readerPane.innerHTML = rendered;
 
     // Editor mode: raw text
-    if (window.initCodeMirror && state.cmView) {
-        if (state.cmView.state.doc.toString() !== state.currentContent) {
-            state.cmView.dispatch({
-                changes: {from: 0, to: state.cmView.state.doc.length, insert: state.currentContent},
-                selection: {anchor: 0}
-            });
+    if (window.CodeMirror && state.cmView) {
+        if (state.cmView.getValue() !== state.currentContent) {
+            state.cmView.setValue(state.currentContent);
+            state.cmView.setCursor(0, 0);
         }
-        textarea.style.display = 'none';
-        textarea.classList.remove('flex-1');
     } else {
         textarea.style.display = 'block';
         textarea.classList.add('flex-1');
@@ -965,7 +958,7 @@ function onEditorKeydown(e) {
 }
 
 function updateEditorStats() {
-  const text = state.cmView ? state.cmView.state.doc.toString() : document.getElementById('editor-textarea').value;
+  const text = state.cmView ? state.cmView.getValue() : document.getElementById('editor-textarea').value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   document.getElementById('stat-words').textContent = `${words} word${words !== 1 ? 's' : ''}`;
   document.getElementById('stat-chars').textContent = `${text.length} chars`;
