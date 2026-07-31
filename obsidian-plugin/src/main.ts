@@ -146,8 +146,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         }
         if (normalizedLocal !== normalizedRemote) {
           if (this.modifyDebounceTimers.has(file.path)) {
-            // User is actively typing, don't overwrite their local edits. Their pending sync will overwrite the server soon.
-            return;
+            clearTimeout(this.modifyDebounceTimers.get(file.path)!);
+            this.modifyDebounceTimers.delete(file.path);
           }
           this.remoteChangeLocks.set(file.path, Date.now() + 800);
           try {
@@ -381,8 +381,9 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const lockExpiry = this.remoteChangeLocks.get(file.path);
         if (lockExpiry && Date.now() < lockExpiry) return; // ignore our own remote updates
 
-        // If a timer is already running (e.g. from editor-change), don't override it
-        if (this.modifyDebounceTimers.has(file.path)) return;
+        if (this.modifyDebounceTimers.has(file.path)) {
+          clearTimeout(this.modifyDebounceTimers.get(file.path)!);
+        }
 
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
@@ -520,12 +521,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
                 }
                 this.remoteChangeLocks.set(path, Date.now() + 800);
                 await this.app.vault.adapter.write(path, remoteContent);
+                this.wsClient.updateHashCache(path, remoteContent, false);
                 updated++;
               }
             } else {
               this.remoteChangeLocks.set(path, Date.now() + 800);
               await this.ensureAdapterFolderExists(path);
               await this.app.vault.adapter.write(path, remoteContent);
+              this.wsClient.updateHashCache(path, remoteContent, false);
               created++;
             }
           } catch(e) {
@@ -550,8 +553,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           }
           if (normalizedLocal !== normalizedRemote) {
             if (this.modifyDebounceTimers.has(localFile.path)) {
-              // Local unsaved changes exist, do not overwrite from remote
-              continue;
+              clearTimeout(this.modifyDebounceTimers.get(localFile.path)!);
+              this.modifyDebounceTimers.delete(localFile.path);
             }
             this.remoteChangeLocks.set(localFile.path, Date.now() + 800);
             if (item.is_binary) {
@@ -559,6 +562,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             } else {
               await this.app.vault.modify(localFile, remoteContent);
             }
+            this.wsClient.updateHashCache(localFile.path, remoteContent, item.is_binary);
             updated++;
           }
         } else if (!localFile) {
@@ -569,6 +573,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           } else {
             await this.app.vault.create(path, remoteContent);
           }
+          this.wsClient.updateHashCache(path, remoteContent, item.is_binary);
           created++;
         }
       }

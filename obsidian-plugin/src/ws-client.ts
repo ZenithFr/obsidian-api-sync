@@ -8,6 +8,7 @@ import {
   ConnectedPayload,
   ErrorPayload,
   InboundPayload,
+  OutboundPayload,
 } from './types';
 import { fnv1a } from './utils';
 
@@ -18,7 +19,7 @@ export enum WsState {
   RECONNECTING = 'RECONNECTING',
 }
 
-const MAX_QUEUE_SIZE = 50;
+const MAX_QUEUE_SIZE = 1000;
 const DEBOUNCE_MS = 800;
 const MAX_RECONNECT_DELAY_MS = 30000;
 
@@ -27,7 +28,7 @@ export class ObsidianApiSyncWsClient {
   private state: WsState = WsState.DISCONNECTED;
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private sendQueue: FileModifyPayload[] = [];
+  private sendQueue: OutboundPayload[] = [];
   private autoReconnect = true;
 
   // Stored so reconnect can use them without re-passing
@@ -86,7 +87,7 @@ export class ObsidianApiSyncWsClient {
     socket.onopen = () => {
       this.reconnectAttempt = 0;
       this.setState(WsState.CONNECTED);
-      this.flushQueue();
+      this.flushPromise = this.flushQueue();
     };
 
     socket.onmessage = (event: MessageEvent) => {
@@ -216,7 +217,9 @@ export class ObsidianApiSyncWsClient {
     }
   }
 
-  flushQueue(): void {
+  private flushPromise: Promise<void> | null = null;
+
+  async flushQueue(): Promise<void> {
     if (this.state !== WsState.CONNECTED || !this.ws) return;
 
     while (this.sendQueue.length > 0) {
@@ -224,6 +227,16 @@ export class ObsidianApiSyncWsClient {
       if (item) {
         this.rawSend(item);
       }
+    }
+
+    while (this.ws && this.ws.readyState === WebSocket.OPEN && this.ws.bufferedAmount > 0) {
+      await new Promise(r => setTimeout(r, 50));
+    }
+  }
+
+  updateHashCache(path: string, content: string, is_binary: boolean = false): void {
+    if (!is_binary) {
+      this.contentHashCache.set(path, fnv1a(content));
     }
   }
 
@@ -269,6 +282,9 @@ export class ObsidianApiSyncWsClient {
 
     switch (payload.type) {
       case 'FILE_CHANGED':
+        if (!payload.is_binary) {
+          this.contentHashCache.set(payload.path, fnv1a(payload.content));
+        }
         if (this.onFileChanged) {
           this.onFileChanged(payload);
         }
@@ -291,9 +307,15 @@ export class ObsidianApiSyncWsClient {
 
       case 'CONNECTED': {
         const connPayload = payload as ConnectedPayload;
-        if (this.onConnected) {
-          this.onConnected(connPayload.client_id);
-        }
+        (async () => {
+          if (this.flushPromise) {
+            await this.flushPromise;
+            this.flushPromise = null;
+          }
+          if (this.onConnected) {
+            this.onConnected(connPayload.client_id);
+          }
+        })();
         break;
       }
 
@@ -330,10 +352,9 @@ export class ObsidianApiSyncWsClient {
     }
   }
 
-  private enqueue(payload: any): void {
-    // Drop the oldest item if at capacity
+  private enqueue(payload: OutboundPayload): void {
     if (this.sendQueue.length >= MAX_QUEUE_SIZE) {
-      this.sendQueue.shift();
+      throw new Error('ObsidianApiSync: WebSocket send queue is full.');
     }
     this.sendQueue.push(payload);
   }
