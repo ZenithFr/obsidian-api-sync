@@ -8,6 +8,7 @@ connected clients through the shared ConnectionManager instance in ws.py.
 
 from datetime import datetime, timezone
 from pathlib import Path
+import base64
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
@@ -17,6 +18,7 @@ from auth import get_current_token
 from config import settings
 from database import add_audit, get_vault_path
 from routers.ws import manager
+from version_control import save_version, move_to_trash
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -76,18 +78,17 @@ async def list_files(
 
     md_files = []
 
-    raw_files = list(vault_root.rglob("*.md"))
-    obsidian_dir = vault_root / ".obsidian"
-    if obsidian_dir.exists():
-        raw_files.extend(list(obsidian_dir.rglob("*")))
+    raw_files = list(vault_root.rglob("*"))
         
     unique_files = list({f.resolve(): f for f in raw_files if f.is_file()}.values())
 
     for file in unique_files:
         relative = str(file.relative_to(vault_root)).replace("\\", "/")
         
-        # Don't sync our own token to prevent syncing across different environments
+        # Don't sync our own token or version/trash folders
         if relative == ".obsidian/plugins/obsidian-api-sync/data.json":
+            continue
+        if relative.startswith(".sync_versions/") or relative.startswith(".sync_trash/"):
             continue
 
         if include_content:
@@ -95,10 +96,14 @@ async def list_files(
                 # Guard against reading enormous files into memory
                 if file.stat().st_size > MAX_FILE_SIZE_BYTES:
                     continue
-                content = file.read_text(encoding="utf-8")
-                md_files.append({"path": relative, "content": content})
-            except UnicodeDecodeError:
-                pass # Skip binary files
+                try:
+                    content = file.read_text(encoding="utf-8")
+                    md_files.append({"path": relative, "content": content, "is_binary": False})
+                except UnicodeDecodeError:
+                    # Binary file
+                    raw_bytes = file.read_bytes()
+                    b64_content = base64.b64encode(raw_bytes).decode("ascii")
+                    md_files.append({"path": relative, "content": b64_content, "is_binary": True})
             except Exception:
                 pass
         else:
@@ -152,12 +157,17 @@ async def read_file(
     if not target.is_file():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
 
-    content = target.read_text(encoding="utf-8")
     size_bytes = target.stat().st_size
+    try:
+        content = target.read_text(encoding="utf-8")
+        is_binary = False
+    except UnicodeDecodeError:
+        content = base64.b64encode(target.read_bytes()).decode("ascii")
+        is_binary = True
 
     await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ")
 
-    return JSONResponse(content={"path": path, "content": content, "size_bytes": size_bytes})
+    return JSONResponse(content={"path": path, "content": content, "size_bytes": size_bytes, "is_binary": is_binary})
 
 
 # -- POST /api/files/{path} ---------------------------------------------------
@@ -193,21 +203,24 @@ async def write_file(
             detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE_BYTES // (1024*1024)} MB.",
         )
 
+    is_binary = False
     try:
         content = body_bytes.decode("utf-8")
-    except UnicodeDecodeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Request body is not valid UTF-8: {exc}",
-        ) from exc
+    except UnicodeDecodeError:
+        is_binary = True
+        content = base64.b64encode(body_bytes).decode("ascii")
+
+    # Save version before modifying existing file
+    if target.exists():
+        save_version(Path(vault_path), path)
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    target.write_bytes(body_bytes)
     size_bytes = target.stat().st_size
 
     ts = _utcnow_iso()
     await manager.broadcast(
-        {"type": "FILE_CHANGED", "path": path, "content": content, "source": "rest", "ts": ts}
+        {"type": "FILE_CHANGED", "path": path, "content": content, "is_binary": is_binary, "source": "rest", "ts": ts}
     )
 
     await add_audit(method="POST", path=path, token_id=token_data["id"], action="WRITE")
@@ -280,7 +293,7 @@ async def delete_file(
     if not target.is_file():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
 
-    target.unlink()
+    move_to_trash(Path(vault_path), path)
 
     ts = _utcnow_iso()
     await manager.broadcast({"type": "FILE_DELETED", "path": path, "source": "rest", "ts": ts})

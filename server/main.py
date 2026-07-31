@@ -46,6 +46,7 @@ from database import (
 )
 from routers.files import router as files_router
 from routers.ws import router as ws_router
+from routers.versions import router as versions_router
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +156,7 @@ if _cors_origins:
 
 app.include_router(files_router)
 app.include_router(ws_router)
+app.include_router(versions_router)
 
 # -- Static Files -------------------------------------------------------------
 

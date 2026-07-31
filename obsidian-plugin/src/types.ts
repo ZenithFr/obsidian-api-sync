@@ -8,6 +8,9 @@ export interface ObsidianApiSyncSettings {
   reconnectIntervalMs: number;
   syncObsidianFolder: boolean;
   excludeWorkspace: boolean;
+  syncMode: 'include_all' | 'include_selected' | 'exclude_selected';
+  selectiveSyncPaths: string;
+  allowedExtensions: string;
 }
 
 export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
@@ -19,6 +22,9 @@ export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   reconnectIntervalMs: 3000,
   syncObsidianFolder: false,
   excludeWorkspace: true,
+  syncMode: 'include_all',
+  selectiveSyncPaths: '',
+  allowedExtensions: 'md, canvas, pdf, png, jpg, jpeg, gif, webp, mp3, mp4',
 };
 
 export interface FolderCreatePayload {
@@ -34,6 +40,7 @@ export interface FileChangedPayload {
   type: 'FILE_CHANGED';
   path: string;
   content: string;
+  is_binary?: boolean;
   source: 'ws' | 'rest';
   ts: string;
 }
@@ -77,6 +84,7 @@ export interface FileModifyPayload {
   type: 'FILE_MODIFY';
   path: string;
   content: string;
+  is_binary?: boolean;
 }
 
 export interface FileDeletePayload {

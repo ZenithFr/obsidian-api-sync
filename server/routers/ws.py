@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import shutil
+import base64
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -24,6 +25,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from auth import verify_ws_token
 from config import settings
 from database import add_audit, get_vault_path
+from version_control import save_version, move_to_trash
 
 logger = logging.getLogger(__name__)
 
@@ -187,16 +189,30 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
             # -- FILE_MODIFY --------------------------------------------------
             if msg_type == "FILE_MODIFY":
                 content: str | None = payload.get("content")
+                is_binary: bool = payload.get("is_binary", False)
                 if content is None:
                     await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "FILE_MODIFY requires 'content'."})
                     continue
 
+                if target_file.exists():
+                    save_version(vault_path, file_path)
+
                 target_file.parent.mkdir(parents=True, exist_ok=True)
-                target_file.write_text(content, encoding="utf-8")
+                
+                if is_binary:
+                    try:
+                        raw_bytes = base64.b64decode(content)
+                        target_file.write_bytes(raw_bytes)
+                    except Exception as e:
+                        await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": f"Failed to decode base64: {e}"})
+                        continue
+                else:
+                    target_file.write_text(content, encoding="utf-8")
+                    
                 ts = _utcnow_iso()
                 # Broadcast to all OTHER clients (exclude sender to prevent echo)
                 await manager.broadcast(
-                    {"type": "FILE_CHANGED", "path": file_path, "content": content, "source": "ws", "ts": ts},
+                    {"type": "FILE_CHANGED", "path": file_path, "content": content, "is_binary": is_binary, "source": "ws", "ts": ts},
                     exclude=websocket,
                 )
                 await add_audit(method="WS", path=file_path, token_id=token_data["id"], action="WRITE")
@@ -204,10 +220,7 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
             # -- FILE_DELETE --------------------------------------------------
             elif msg_type == "FILE_DELETE":
                 if target_file.exists():
-                    if target_file.is_file():
-                        target_file.unlink()
-                    elif target_file.is_dir():
-                        shutil.rmtree(target_file)
+                    move_to_trash(vault_path, file_path)
 
                 ts = _utcnow_iso()
                 await manager.broadcast(
@@ -230,6 +243,7 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     continue
 
                 if target_file.exists():
+                    save_version(vault_path, file_path)
                     target_new.parent.mkdir(parents=True, exist_ok=True)
                     target_file.rename(target_new)
 
@@ -242,7 +256,11 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
 
             # -- FOLDER_CREATE ------------------------------------------------
             elif msg_type == "FOLDER_CREATE":
-                target_file.mkdir(parents=True, exist_ok=True)
+                try:
+                    target_file.mkdir(parents=True, exist_ok=True)
+                except FileExistsError:
+                    await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "A file already exists at this path."})
+                    continue
                 ts = _utcnow_iso()
                 await manager.broadcast(
                     {"type": "FOLDER_CREATED", "path": file_path, "source": "ws", "ts": ts},

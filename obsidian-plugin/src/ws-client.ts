@@ -145,11 +145,12 @@ export class ObsidianApiSyncWsClient {
   /**
    * Instantly sends a modify payload, or queues it if disconnected.
    */
-  sendFileModify(path: string, content: string): void {
+  sendFileModify(path: string, content: string, is_binary: boolean = false): void {
     const payload: FileModifyPayload = {
       type: 'FILE_MODIFY',
       path,
       content,
+      is_binary,
     };
 
     if (this.state === WsState.CONNECTED && this.ws) {
@@ -297,7 +298,7 @@ export class ObsidianApiSyncWsClient {
     }
   }
 
-  private enqueue(payload: FileModifyPayload): void {
+  private enqueue(payload: any): void {
     // Drop the oldest item if at capacity
     if (this.sendQueue.length >= MAX_QUEUE_SIZE) {
       this.sendQueue.shift();

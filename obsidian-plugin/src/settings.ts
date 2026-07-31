@@ -16,6 +16,9 @@ interface ObsidianApiSyncPluginLike {
     reconnectIntervalMs: number;
     syncObsidianFolder: boolean;
     excludeWorkspace: boolean;
+    syncMode: 'include_all' | 'include_selected' | 'exclude_selected';
+    selectiveSyncPaths: string;
+    allowedExtensions: string;
   };
   wsClient: {
     getState(): WsState;
@@ -220,6 +223,50 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.excludeWorkspace)
           .onChange(async (value) => {
             this.plugin.settings.excludeWorkspace = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // ── Selective Sync ────────────────────────────────────────────────────────
+    containerEl.createEl('h3', { text: 'Selective Sync' });
+
+    new Setting(containerEl)
+      .setName('Sync Mode')
+      .setDesc('Choose whether to sync all files, only selected paths, or exclude selected paths.')
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption('include_all', 'Include All (Default)')
+          .addOption('include_selected', 'Include Selected Paths Only')
+          .addOption('exclude_selected', 'Exclude Selected Paths')
+          .setValue(this.plugin.settings.syncMode)
+          .onChange(async (value) => {
+            this.plugin.settings.syncMode = value as any;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Selective Sync Paths')
+      .setDesc('Enter folder or file paths to include or exclude (depending on the mode above). One path per line. Example: "journal/" or "secret.md"')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('journal/\nattachments/\nsecret.md')
+          .setValue(this.plugin.settings.selectiveSyncPaths)
+          .onChange(async (value) => {
+            this.plugin.settings.selectiveSyncPaths = value;
+            await this.plugin.saveSettings();
+          })
+      );
+      
+    new Setting(containerEl)
+      .setName('Allowed File Extensions')
+      .setDesc('Comma-separated list of file extensions to sync. Useful for syncing attachments.')
+      .addText((text) =>
+        text
+          .setPlaceholder('md, canvas, pdf, png, jpg')
+          .setValue(this.plugin.settings.allowedExtensions)
+          .onChange(async (value) => {
+            this.plugin.settings.allowedExtensions = value;
             await this.plugin.saveSettings();
           })
       );
