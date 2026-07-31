@@ -831,6 +831,8 @@ function setMode(mode) {
         state.cmView.focus();
     } else {
         const textarea = document.getElementById('editor-textarea');
+        textarea.style.display = 'block';
+        textarea.classList.add('flex-1');
         textarea.value = state.currentContent;
         textarea.focus();
     }
@@ -878,6 +880,8 @@ function updateEditorContent() {
             });
         }
     } else {
+        textarea.style.display = 'block';
+        textarea.classList.add('flex-1');
         textarea.value = state.currentContent;
     }
     textarea.disabled = false;
