@@ -190,8 +190,11 @@ export class ObsidianApiSyncWsClient {
     } else {
       this.enqueue(payload);
     }
-    this.contentHashCache.set(path, fnv1a(content));
-    if (this.onHashUpdate) this.onHashUpdate(path, fnv1a(content));
+    if (!is_binary) {
+      const h = fnv1a(content);
+      this.contentHashCache.set(path, h);
+      if (this.onHashUpdate) this.onHashUpdate(path, h);
+    }
   }
 
   sendFileDelete(path: string): void {
