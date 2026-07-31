@@ -62,6 +62,14 @@ def _sanitize_path(vault_path: str, relative_path: str) -> Path:
 
     if not str(target).startswith(str(vault_root) + "/") and str(target) != str(vault_root):
         raise ValueError(f"Path traversal detected: '{relative_path}' escapes the vault root.")
+
+    try:
+        rel_parts = target.relative_to(vault_root).parts
+        if rel_parts and rel_parts[0] in (".sync_versions", ".sync_trash"):
+            raise ValueError("Access to internal sync folders is forbidden.")
+    except ValueError:
+        pass
+
     return target
 
 
