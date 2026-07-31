@@ -1280,8 +1280,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-reading')?.addEventListener('click', () => setMode('reading'));
   document.getElementById('btn-editing')?.addEventListener('click', () => setMode('editing'));
   document.getElementById('btn-save')?.addEventListener('click', saveCurrentFile);
-  document.getElementById('btn-rename')?.addEventListener('click', promptRenameFile);
-  document.getElementById('btn-delete')?.addEventListener('click', deleteCurrentFile);
 
   const textarea = document.getElementById('editor-textarea');
   if (textarea) {
