@@ -12,6 +12,7 @@ export interface ObsidianApiSyncSettings {
   selectiveSyncPaths: string;
   allowedExtensions: string;
   fileHashes: Record<string, string>;
+  encryptionPassword?: string;
 }
 
 export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
@@ -26,6 +27,8 @@ export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   syncMode: 'include_all',
   selectiveSyncPaths: '',
   allowedExtensions: 'md, canvas, pdf, png, jpg, jpeg, gif, webp, mp3, mp4',
+  fileHashes: {},
+  encryptionPassword: '',
 };
 
 export interface FolderCreatePayload {

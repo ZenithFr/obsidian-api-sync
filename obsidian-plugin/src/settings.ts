@@ -182,6 +182,22 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
         return text;
       });
 
+    new Setting(el)
+      .setName('End-to-End Encryption Password')
+      .setDesc('Optional. If set, encrypts your data before sending it to the server. WARNING: If you lose this password, your server data is unrecoverable!')
+      .addText(text => {
+        text
+          .setPlaceholder('Encryption Password (leave blank to disable)')
+          .setValue(this.plugin.settings.encryptionPassword || '')
+          .onChange(async value => {
+            this.plugin.settings.encryptionPassword = value.trim();
+            await this.plugin.saveSettings();
+          });
+        text.inputEl.type = 'password';
+        text.inputEl.autocomplete = 'off';
+        return text;
+      });
+
     // Connection status
     el.createEl('h3', { text: 'Connection Status' });
     const statusDiv = el.createDiv();

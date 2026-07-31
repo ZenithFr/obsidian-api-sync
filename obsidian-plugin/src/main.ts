@@ -3,6 +3,7 @@ import { ObsidianApiSyncSettings, DEFAULT_SETTINGS } from './types';
 import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
 import { ObsidianApiSyncSettingTab } from './settings';
 import { TrashRecoveryModal, VersionHistoryModal, ConflictResolutionModal } from './modals';
+import { encryptText, decryptText, encryptBinary, decryptBinary, arrayBufferToBase64, base64ToArrayBuffer, isEncryptedText, isEncryptedBinary } from './encryption';
 
 export default class ObsidianApiSyncPlugin extends Plugin {
   settings!: ObsidianApiSyncSettings;
@@ -60,22 +61,49 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   }
 
   arrayBufferToBase64(buffer: ArrayBuffer): string {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return window.btoa(binary);
+    return arrayBufferToBase64(buffer);
   }
 
   base64ToArrayBuffer(base64: string): ArrayBuffer {
-    const binary_string = window.atob(base64);
-    const len = binary_string.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binary_string.charCodeAt(i);
+    return base64ToArrayBuffer(base64);
+  }
+
+  async encryptPayloadIfNeeded(contentStr: string, isBinary: boolean): Promise<{ contentStr: string, isBinary: boolean }> {
+    if (!this.settings.encryptionPassword) return { contentStr, isBinary };
+    if (isBinary) {
+      const encryptedBuf = await encryptBinary(this.base64ToArrayBuffer(contentStr), this.settings.encryptionPassword);
+      return { contentStr: this.arrayBufferToBase64(encryptedBuf), isBinary: true };
+    } else {
+      const encryptedText = await encryptText(contentStr, this.settings.encryptionPassword);
+      return { contentStr: encryptedText, isBinary: false };
     }
-    return bytes.buffer;
+  }
+
+  async decryptInboundContent(path: string, remoteContent: string, isBinary: boolean): Promise<{ decryptedStr: string, decryptedIsBinary: boolean }> {
+    if (!this.settings.encryptionPassword) {
+      return { decryptedStr: remoteContent, decryptedIsBinary: isBinary };
+    }
+    if (isBinary) {
+      const remoteBuffer = this.base64ToArrayBuffer(remoteContent);
+      if (isEncryptedBinary(remoteBuffer)) {
+        try {
+          const decryptedBuffer = await decryptBinary(remoteBuffer, this.settings.encryptionPassword);
+          return { decryptedStr: this.arrayBufferToBase64(decryptedBuffer), decryptedIsBinary: true };
+        } catch (e) {
+          throw new Error(`Failed to decrypt binary file ${path}`);
+        }
+      }
+    } else {
+      if (isEncryptedText(remoteContent)) {
+        try {
+          const decryptedText = await decryptText(remoteContent, this.settings.encryptionPassword);
+          return { decryptedStr: decryptedText, decryptedIsBinary: false };
+        } catch (e) {
+          throw new Error(`Failed to decrypt text file ${path}`);
+        }
+      }
+    }
+    return { decryptedStr: remoteContent, decryptedIsBinary: isBinary };
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
@@ -118,6 +146,15 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     };
 
     this.wsClient.onFileChanged = async (payload) => {
+      try {
+        const dec = await this.decryptInboundContent(payload.path, payload.content, !!payload.is_binary);
+        payload.content = dec.decryptedStr;
+        payload.is_binary = dec.decryptedIsBinary;
+      } catch (err) {
+        this.showError(`Failed to decrypt WebSocket change for ${payload.path}`, err);
+        return;
+      }
+
       if (payload.path.startsWith(this.app.vault.configDir + '/')) {
         if (!this.settings.syncObsidianFolder) return;
         if (this.settings.excludeWorkspace && payload.path === `${this.app.vault.configDir}/workspace.json`) return;
@@ -343,10 +380,11 @@ export default class ObsidianApiSyncPlugin extends Plugin {
                 } else {
                   contentStr = await this.app.vault.adapter.read(path);
                 }
+                const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
                 if (this.wsClient.getState() === WsState.CONNECTED) {
-                  this.wsClient.sendFileModify(path, contentStr, isBinary);
+                  this.wsClient.sendFileModify(path, encrypted.contentStr, encrypted.isBinary);
                 } else if (this.settings.serverUrl && this.settings.apiToken) {
-                  await this.httpFallbackWriteRaw(path, contentStr, isBinary);
+                  await this.httpFallbackWriteRaw(path, encrypted.contentStr, encrypted.isBinary);
                 }
               }
             }
@@ -378,7 +416,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const currentContent = editor.getValue();
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
-          this.wsClient.sendFileModify(file.path, currentContent);
+          const encrypted = await this.encryptPayloadIfNeeded(currentContent, false);
+          this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
         }, this.settings.syncDebounceMs || 150);
 
         this.modifyDebounceTimers.set(file.path, timer);
@@ -410,7 +449,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             contentStr = await this.app.vault.read(file);
           }
           
-          this.wsClient.sendFileModify(file.path, contentStr, isBinary);
+          const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+          this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
         }, this.settings.syncDebounceMs || 150);
 
         this.modifyDebounceTimers.set(file.path, timer);
@@ -438,7 +478,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               } else {
                 contentStr = await this.app.vault.read(file);
               }
-              this.wsClient.sendFileModify(file.path, contentStr, isBinary);
+              const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+          this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
             }
           }, 300);
         } else {
@@ -504,7 +545,17 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
       for (const item of data.files) {
         const path = item.path;
-        const remoteContent = item.content;
+        let remoteContent = item.content;
+        let isBin = !!item.is_binary;
+
+        try {
+          const dec = await this.decryptInboundContent(path, remoteContent, isBin);
+          remoteContent = dec.decryptedStr;
+          isBin = dec.decryptedIsBinary;
+        } catch (err) {
+          this.showError(`Failed to decrypt inbound HTTP data for ${path}`, err);
+          continue;
+        }
         
         // Handle Obsidian settings/plugins folder
         if (path.startsWith(this.app.vault.configDir + '/')) {
@@ -546,7 +597,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         if (localFile instanceof TFile) {
           let normalizedLocal = '';
           let normalizedRemote = '';
-          if (item.is_binary) {
+          if (isBin) {
             const currentBuffer = await this.app.vault.readBinary(localFile);
             normalizedLocal = this.arrayBufferToBase64(currentBuffer);
             normalizedRemote = remoteContent;
@@ -561,23 +612,23 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               this.modifyDebounceTimers.delete(localFile.path);
             }
             this.remoteChangeLocks.set(localFile.path, Date.now() + 800);
-            if (item.is_binary) {
+            if (isBin) {
               await this.app.vault.modifyBinary(localFile, this.base64ToArrayBuffer(remoteContent));
             } else {
               await this.app.vault.modify(localFile, remoteContent);
             }
-            this.wsClient.updateHashCache(localFile.path, remoteContent, item.is_binary);
+            this.wsClient.updateHashCache(localFile.path, item.content, !!item.is_binary);
             updated++;
           }
         } else if (!localFile) {
           this.remoteChangeLocks.set(path, Date.now() + 800);
           await this.ensureFolderExists(path);
-          if (item.is_binary) {
+          if (isBin) {
             await this.app.vault.createBinary(path, this.base64ToArrayBuffer(remoteContent));
           } else {
             await this.app.vault.create(path, remoteContent);
           }
-          this.wsClient.updateHashCache(path, remoteContent, item.is_binary);
+          this.wsClient.updateHashCache(path, item.content, !!item.is_binary);
           created++;
         }
       }
