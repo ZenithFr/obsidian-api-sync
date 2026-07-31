@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import base64
 import asyncio
+import shutil
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
 from fastapi.responses import JSONResponse, Response
@@ -131,17 +132,24 @@ async def list_files(
 
         if include_content:
             try:
+                size = file.stat().st_size
                 # Guard against reading enormous files into memory
-                if file.stat().st_size > MAX_FILE_SIZE_BYTES:
+                if size > MAX_FILE_SIZE_BYTES:
+                    md_files.append({"path": relative, "content": None, "is_binary": True, "size_bytes": size, "hash": ""})
                     continue
                 try:
                     content = await asyncio.to_thread(file.read_text, encoding="utf-8")
-                    md_files.append({"path": relative, "content": content, "is_binary": False})
+                    h = _fnv1a(content)
+                    md_files.append({"path": relative, "content": content, "is_binary": False, "size_bytes": size, "hash": h})
                 except UnicodeDecodeError:
                     # Binary file
                     raw_bytes = await asyncio.to_thread(file.read_bytes)
                     b64_content = base64.b64encode(raw_bytes).decode("ascii")
-                    md_files.append({"path": relative, "content": b64_content, "is_binary": True})
+                    # Only send content if < 1MB, otherwise force client to download separately
+                    if size > 1024 * 1024:
+                        md_files.append({"path": relative, "content": None, "is_binary": True, "size_bytes": size, "hash": ""})
+                    else:
+                        md_files.append({"path": relative, "content": b64_content, "is_binary": True, "size_bytes": size, "hash": ""})
             except Exception:
                 pass
         else:
@@ -211,6 +219,137 @@ async def read_file(
 
     return JSONResponse(content={"path": path, "content": content, "size_bytes": size_bytes, "is_binary": is_binary})
 
+
+# -- GET /api/files/download/{path} -------------------------------------------
+
+from fastapi.responses import FileResponse
+
+@router.get(
+    "/download/{path:path}",
+    summary="Download raw file content",
+    description="Returns the raw file as a streaming binary response, supporting Range headers.",
+)
+async def download_file(
+    path: str,
+    token_data: dict = Depends(get_current_token),
+) -> FileResponse:
+    vault_path = await get_vault_path()
+    target = _sanitize_path(vault_path, path)
+
+    if not target.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
+
+    if not target.is_file():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
+
+    await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ_DOWNLOAD")
+
+    return FileResponse(target)
+
+
+# -- POST /api/files/chunk ----------------------------------------------------
+
+class ChunkPayload(BaseModel):
+    upload_id: str
+    chunk_index: int
+    total_chunks: int
+    data: str  # Base64
+
+@router.post(
+    "/chunk",
+    summary="Upload a file chunk",
+    description="Upload a base64 encoded chunk for a large file.",
+    status_code=status.HTTP_200_OK,
+)
+async def upload_chunk(
+    payload: ChunkPayload,
+    token_data: dict = Depends(get_current_token),
+) -> JSONResponse:
+    vault_path = await get_vault_path()
+    tmp_dir = Path(vault_path) / ".sync_tmp" / payload.upload_id
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    
+    chunk_file = tmp_dir / str(payload.chunk_index)
+    raw_bytes = base64.b64decode(payload.data)
+    
+    await asyncio.to_thread(chunk_file.write_bytes, raw_bytes)
+    return JSONResponse(content={"status": "ok", "chunk": payload.chunk_index})
+
+
+# -- POST /api/files/commit ---------------------------------------------------
+
+class CommitPayload(BaseModel):
+    upload_id: str
+    path: str
+    is_binary: bool
+
+@router.post(
+    "/commit",
+    summary="Commit a chunked upload",
+    description="Assembles chunks and saves the final file.",
+    status_code=status.HTTP_200_OK,
+)
+async def commit_chunked_upload(
+    payload: CommitPayload,
+    token_data: dict = Depends(get_current_token),
+    x_base_hash: str | None = Header(None, alias="X-Base-Hash"),
+) -> JSONResponse:
+    vault_path = await get_vault_path()
+    target = _sanitize_path(vault_path, payload.path)
+    tmp_dir = Path(vault_path) / ".sync_tmp" / payload.upload_id
+
+    if not tmp_dir.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload ID not found")
+
+    chunks = sorted([f for f in tmp_dir.iterdir() if f.is_file()], key=lambda x: int(x.name))
+    
+    lock = await file_locks.acquire(str(target))
+    async with lock:
+        if target.exists() and x_base_hash and not payload.is_binary:
+            try:
+                current_text = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
+                current_hash = _fnv1a(current_text)
+                if current_hash != x_base_hash:
+                    shutil.rmtree(tmp_dir, ignore_errors=True)
+                    return JSONResponse(
+                        status_code=409,
+                        content={
+                            "type": "CONFLICT",
+                            "path": payload.path,
+                            "server_content": current_text,
+                            "client_content": "", # Too large to send back in conflict
+                        }
+                    )
+            except OSError:
+                pass
+        
+        if target.exists():
+            await asyncio.to_thread(save_version, Path(vault_path), payload.path)
+        
+        target.parent.mkdir(parents=True, exist_ok=True)
+        
+        def _assemble():
+            tmp_final = target.with_name(f"{target.name}.{uuid4().hex}.tmp")
+            with open(tmp_final, "wb") as outfile:
+                for chunk in chunks:
+                    with open(chunk, "rb") as infile:
+                        import shutil
+                        shutil.copyfileobj(infile, outfile)
+            os.replace(tmp_final, target)
+            import shutil
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            
+        await asyncio.to_thread(_assemble)
+        size_bytes = target.stat().st_size
+
+    ts = _utcnow_iso()
+    await manager.broadcast(
+        {"type": "FILE_CHANGED", "path": payload.path, "content": None, "is_binary": payload.is_binary, "source": "rest", "ts": ts}
+    )
+
+    await add_audit(method="POST", path=payload.path, token_id=token_data["id"], action="WRITE_CHUNKED")
+
+    return JSONResponse(content={"path": payload.path, "status": "written", "size_bytes": size_bytes})
 
 # -- POST /api/files/{path} ---------------------------------------------------
 

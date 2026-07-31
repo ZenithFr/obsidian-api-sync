@@ -79,6 +79,52 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     }
   }
 
+  async uploadChunked(path: string, base64Content: string, isBinary: boolean): Promise<void> {
+    if (!this.settings.serverUrl || !this.settings.apiToken) return;
+    const uploadId = (Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
+    const chunkSize = 2 * 1024 * 1024; // 2MB
+    const totalChunks = Math.ceil(base64Content.length / chunkSize);
+
+    new Notice(`ObsidianApiSync: Uploading ${path} in ${totalChunks} chunks...`);
+
+    try {
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = base64Content.substring(i * chunkSize, (i + 1) * chunkSize);
+        await requestUrl({
+          url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/chunk`,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.settings.apiToken}`
+          },
+          body: JSON.stringify({
+            upload_id: uploadId,
+            chunk_index: i,
+            total_chunks: totalChunks,
+            data: chunk
+          })
+        });
+      }
+
+      await requestUrl({
+        url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/commit`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.settings.apiToken}`
+        },
+        body: JSON.stringify({
+          upload_id: uploadId,
+          path: path,
+          is_binary: isBinary
+        })
+      });
+      new Notice(`ObsidianApiSync: Finished uploading ${path}`);
+    } catch (e) {
+      this.showError(`Failed to upload ${path} in chunks`, e);
+    }
+  }
+
   async decryptInboundContent(path: string, remoteContent: string, isBinary: boolean): Promise<{ decryptedStr: string, decryptedIsBinary: boolean }> {
     if (!this.settings.encryptionPassword) {
       return { decryptedStr: remoteContent, decryptedIsBinary: isBinary };
@@ -380,8 +426,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
                 } else {
                   contentStr = await this.app.vault.adapter.read(path);
                 }
+                if (contentStr.length > 133 * 1024 * 1024) {
+                  new Notice(`ObsidianApiSync: File ${path} is over 100MB limit. Skipping.`);
+                  return;
+                }
                 const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
-                if (this.wsClient.getState() === WsState.CONNECTED) {
+                if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+                  await this.uploadChunked(path, encrypted.contentStr, encrypted.isBinary);
+                } else if (this.wsClient.getState() === WsState.CONNECTED) {
                   this.wsClient.sendFileModify(path, encrypted.contentStr, encrypted.isBinary);
                 } else if (this.settings.serverUrl && this.settings.apiToken) {
                   await this.httpFallbackWriteRaw(path, encrypted.contentStr, encrypted.isBinary);
@@ -416,8 +468,16 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const currentContent = editor.getValue();
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
+          if (currentContent.length > 133 * 1024 * 1024) {
+            new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
+            return;
+          }
           const encrypted = await this.encryptPayloadIfNeeded(currentContent, false);
-          this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+          if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+            await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
+          } else {
+            this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+          }
         }, this.settings.syncDebounceMs || 150);
 
         this.modifyDebounceTimers.set(file.path, timer);
@@ -448,9 +508,16 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           } else {
             contentStr = await this.app.vault.read(file);
           }
-          
+          if (contentStr.length > 133 * 1024 * 1024) {
+            new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
+            return;
+          }
           const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
-          this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+          if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+            await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
+          } else {
+            this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+          }
         }, this.settings.syncDebounceMs || 150);
 
         this.modifyDebounceTimers.set(file.path, timer);
@@ -478,8 +545,16 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               } else {
                 contentStr = await this.app.vault.read(file);
               }
+              if (contentStr.length > 133 * 1024 * 1024) {
+                new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
+                return;
+              }
               const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
-          this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+              if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+                await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
+              } else {
+                this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+              }
             }
           }, 300);
         } else {
@@ -547,6 +622,21 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const path = item.path;
         let remoteContent = item.content;
         let isBin = !!item.is_binary;
+        
+        if (remoteContent === null) {
+          // Download large file
+          new Notice(`ObsidianApiSync: Downloading large file ${path}...`);
+          try {
+            const dlResp = await requestUrl({
+              url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/download/${encodeURI(path)}`,
+              headers: { Authorization: `Bearer ${this.settings.apiToken}` }
+            });
+            remoteContent = this.arrayBufferToBase64(dlResp.arrayBuffer);
+          } catch(e) {
+            this.showError(`Failed to download ${path}`, e);
+            continue;
+          }
+        }
 
         try {
           const dec = await this.decryptInboundContent(path, remoteContent, isBin);
