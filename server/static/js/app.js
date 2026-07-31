@@ -805,6 +805,8 @@ function setMode(mode) {
     const textarea = document.getElementById('editor-textarea');
     textarea.value = state.currentContent;
     textarea.focus();
+    textarea.setSelectionRange(0, 0);
+    textarea.scrollTop = 0;
     updateEditorStats();
   }
 }
