@@ -671,12 +671,21 @@ async function apiFetch(url, options = {}) {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  if (!token && options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase())) {
+    headers['X-CSRF-Token'] = CSRF_TOKEN;
+  }
   return fetch(url, { ...options, headers });
 }
 
 /* ── Toast ────────────────────────────────────────────────────── */
 
 function showToast(message, type = 'info') {
+  if (typeof message !== 'string') {
+    if (Array.isArray(message)) message = message.map(e => e.msg || e).join(', ');
+    else if (message && message.detail) message = Array.isArray(message.detail) ? message.detail.map(e => e.msg).join(', ') : String(message.detail);
+    else if (message && message.message) message = message.message;
+    else message = JSON.stringify(message);
+  }
   const container = document.getElementById('toast-container');
   if (!container) return;
 
@@ -807,7 +816,7 @@ async function loadVaultStats() {
       <div class="mt-5 pt-5 border-t border-border/30">
         <h3 class="text-sm font-semibold text-on-surface mb-3">Sample Files</h3>
         <div class="flex flex-wrap gap-1.5">
-          ${data.files.slice(0, 15).map(f => `<span class="bg-background border border-border/40 text-muted text-xs font-mono px-2 py-1 rounded">${escapeHtml(f)}</span>`).join('')}
+          ${(data.files || []).slice(0, 15).map(f => `<span class="bg-background border border-border/40 text-muted text-xs font-mono px-2 py-1 rounded">${escapeHtml(f)}</span>`).join('')}
         </div>
       </div>` : ''}
     `;
@@ -876,7 +885,8 @@ async function generateToken() {
 async function revokeToken(id) {
   if (!confirm(`Are you sure you want to revoke Token #${id}? Any clients using it will instantly lose access.`)) return;
   try {
-    await fetch(`/dashboard/tokens/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/dashboard/tokens/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to revoke token');
     document.querySelector(`tr[data-token-id="${id}"]`)?.remove();
     showToast('Token revoked successfully.');
     await loadTokens();
@@ -907,7 +917,7 @@ function updateConnectConfig() {
   const token = sel.value || man.value.trim();
   if (!token) { out.value = ''; return; }
   const config = { server: window.location.origin, token };
-  out.value = btoa(JSON.stringify(config));
+  try { out.value = btoa(unescape(encodeURIComponent(JSON.stringify(config)))); } catch(e) { out.value = 'Invalid characters in token'; }
 }
 
 function copyConnectConfig() {
@@ -1069,7 +1079,6 @@ async function loadFileVersions(path) {
         <td>${new Date(v.ts).toLocaleString()}</td>
         <td>${(v.size / 1024).toFixed(1)} KB</td>
         <td><button class="btn-link text-xs">Restore</button></td>
-      `;
       `;
       tr.querySelector('button').addEventListener('click', () => restoreVersion(path, v.ts));
       tbody.appendChild(tr);
