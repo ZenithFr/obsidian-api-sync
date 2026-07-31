@@ -199,13 +199,26 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
     // ── WS Callbacks ──────────────────────────────────────────────────────────
 
-    this.wsClient.onConflict = (payload) => {
+    this.wsClient.onConflict = async (payload) => {
+      let sc = payload.server_content;
+      let cc = payload.client_content;
+      const is_binary = this.isBinaryFile(payload.path);
+
+      try {
+        const decS = await this.decryptInboundContent(payload.path, sc, is_binary);
+        sc = decS.decryptedStr;
+        const decC = await this.decryptInboundContent(payload.path, cc, is_binary);
+        cc = decC.decryptedStr;
+      } catch (e) {
+        console.error("Failed to decrypt conflict payload", e);
+      }
+
       new ConflictResolutionModal(
         this.app,
         this,
         payload.path,
-        payload.server_content,
-        payload.client_content
+        sc,
+        cc
       ).open();
     };
 
