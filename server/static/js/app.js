@@ -774,8 +774,7 @@ function setMode(mode) {
   state.mode = mode;
 
   if (mode === 'reading') {
-    // If transitioning from editing, capture current textarea value immediately
-    state.currentContent = state.cmView ? state.cmView.state.doc.toString() : document.getElementById('editor-textarea').value;
+    // Current content is already kept up to date by editor on-change listeners.
     if (state.unsaved) {
       saveCurrentFile();
     }
