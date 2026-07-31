@@ -28,9 +28,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 
 from config import settings
@@ -44,18 +43,13 @@ from database import (
     revoke_token,
     set_vault_path,
 )
+from limiter import limiter
 from routers.files import router as files_router
 from routers.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
 
 # -- Rate limiter setup -------------------------------------------------------
-
-limiter = Limiter(
-    key_func=get_remote_address,
-    enabled=settings.RATE_LIMIT_ENABLED,
-    default_limits=["200/minute"],
-)
 
 # -- Templates ----------------------------------------------------------------
 
@@ -67,7 +61,8 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 _DANGEROUS_PATH_PATTERNS = re.compile(
     r"^(/etc|/root|/sys|/proc|/dev|/boot|/usr/bin|/usr/sbin|/bin|/sbin"
-    r"|[Cc]:[/\\][Ww]indows|[Cc]:[/\\][Pp]rogram)",
+    r"|[Cc]:[/\\][Ww]indows|[Cc]:[/\\][Pp]rogram"
+    r"|.*[/\\]\.(ssh|aws|gnupg|docker|kube))",
     re.IGNORECASE,
 )
 

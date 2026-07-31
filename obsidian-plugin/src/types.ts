@@ -33,7 +33,7 @@ export type OutboundPayload = FileModifyPayload | FileDeletePayload | FileRename
 export interface FileChangedPayload {
   type: 'FILE_CHANGED';
   path: string;
-  content: string;
+  content: string | null;
   source: 'ws' | 'rest';
   ts: string;
 }

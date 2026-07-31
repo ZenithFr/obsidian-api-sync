@@ -17,6 +17,7 @@ import base64
 from auth import get_current_token
 from config import settings
 from database import add_audit, get_vault_path
+from limiter import limiter
 from routers.ws import manager
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -61,7 +62,9 @@ Use this endpoint to discover which notes exist before reading or modifying them
 Paths use forward-slash separators regardless of the host operating system.
 """,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def list_files(
+    request: Request,
     include_content: bool = False,
     token_data: dict = Depends(get_current_token),
 ) -> JSONResponse:
@@ -95,6 +98,7 @@ async def list_files(
             try:
                 # Guard against reading enormous files into memory
                 if file.stat().st_size > MAX_FILE_SIZE_BYTES:
+                    md_files.append({"path": relative, "content_omitted": True})
                     continue
                 try:
                     content = file.read_text(encoding="utf-8")
@@ -144,7 +148,9 @@ The `path` parameter is the vault-relative path using forward slashes
 Returns HTTP 404 if the file does not exist.
 """,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def read_file(
+    request: Request,
     path: str,
     token_data: dict = Depends(get_current_token),
 ) -> FileResponse:
@@ -178,6 +184,7 @@ All connected Obsidian clients instantly receive a `FILE_CHANGED` WebSocket broa
 """,
     status_code=status.HTTP_200_OK,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def write_file(
     path: str,
     request: Request,
@@ -231,7 +238,9 @@ class RenamePayload(BaseModel):
     description="Renames or moves a file to a new path. Broadcasts FILE_RENAMED to all WebSocket clients.",
     status_code=status.HTTP_200_OK,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def rename_file(
+    request: Request,
     payload: RenamePayload,
     token_data: dict = Depends(get_current_token),
 ) -> JSONResponse:
@@ -269,7 +278,9 @@ async def rename_file(
     description="Permanently deletes the specified markdown file. Returns HTTP 404 if the file does not exist.",
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def delete_file(
+    request: Request,
     path: str,
     token_data: dict = Depends(get_current_token),
 ) -> Response:

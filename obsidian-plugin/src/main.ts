@@ -28,11 +28,16 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       
       if (isBinary) {
           const encodedPath = payload.path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
-          const res = await requestUrl({
-              url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/${encodedPath}`,
-              headers: { Authorization: `Bearer ${this.settings.apiToken}` }
-          });
-          remoteBuffer = res.arrayBuffer;
+          try {
+              const res = await requestUrl({
+                  url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/${encodedPath}`,
+                  headers: { Authorization: `Bearer ${this.settings.apiToken}` }
+              });
+              remoteBuffer = res.arrayBuffer;
+          } catch (err) {
+              console.error('[ObsidianApiSync] Failed to fetch binary file:', err);
+              return;
+          }
       } else {
           remoteContent = payload.content;
       }
@@ -113,8 +118,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             }
         } else {
             const currentContent = await this.app.vault.read(file);
-            const normalizedLocal = currentContent.replace(/\\r\\n/g, '\\n');
-            const normalizedRemote = remoteContent!.replace(/\\r\\n/g, '\\n');
+            const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
+            const normalizedRemote = remoteContent!.replace(/\r\n/g, '\n');
             changed = normalizedLocal !== normalizedRemote;
         }
 
@@ -335,16 +340,26 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const lockExpiry = this.remoteChangeLocks.get(file.path);
         if (lockExpiry && Date.now() < lockExpiry) return; // ignore our own remote updates
 
-        // If a timer is already running (e.g. from editor-change), don't override it
-        if (this.modifyDebounceTimers.has(file.path)) return;
+        // If a timer is already running, clear it to prevent race conditions
+        if (this.modifyDebounceTimers.has(file.path)) {
+            clearTimeout(this.modifyDebounceTimers.get(file.path)!);
+        }
 
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
-          if (this.wsClient.getState() === WsState.CONNECTED) {
-            const content = await this.app.vault.read(file);
-            this.wsClient.sendFileModify(file.path, content);
-          } else if (this.settings.serverUrl && this.settings.apiToken) {
-            await this.httpFallbackWrite(file);
+          const isBinary = !['md', 'txt', 'csv', 'json', 'yaml', 'yml'].includes(file.extension.toLowerCase());
+          
+          if (isBinary) {
+            if (this.settings.serverUrl && this.settings.apiToken) {
+              await this.httpFallbackWrite(file);
+            }
+          } else {
+            if (this.wsClient.getState() === WsState.CONNECTED) {
+              const content = await this.app.vault.read(file);
+              this.wsClient.sendFileModify(file.path, content);
+            } else if (this.settings.serverUrl && this.settings.apiToken) {
+              await this.httpFallbackWrite(file);
+            }
           }
         }, this.settings.syncDebounceMs || 150);
 
@@ -409,6 +424,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   }
 
   onunload(): void {
+    for (const timer of this.modifyDebounceTimers.values()) {
+        clearTimeout(timer);
+    }
+    this.modifyDebounceTimers.clear();
     this.wsClient.disconnect();
   }
 
@@ -446,6 +465,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
       for (const item of data.files) {
         const path = item.path;
+        if (item.content_omitted) {
+            new Notice(`ObsidianApiSync: File ${path} is too large to sync.`);
+            continue;
+        }
         const isBinary = item.content_base64 !== undefined;
         let remoteContent: string | null = null;
         let remoteBuffer: ArrayBuffer | null = null;

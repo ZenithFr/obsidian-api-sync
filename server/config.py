@@ -39,9 +39,9 @@ class Settings(BaseSettings):
     # Rate limiting (set False in local dev to skip)
     RATE_LIMIT_ENABLED: bool = True
     # Max login attempts per minute per IP
-    LOGIN_RATE_LIMIT: str = "5/minute"
+    LOGIN_RATE_LIMIT: str = "120/minute"
     # Max API requests per minute per token
-    API_RATE_LIMIT: str = "120/minute"
+    API_RATE_LIMIT: str = "240/minute"
 
     # Max size of a single file write (REST or WebSocket), in bytes.
     MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB

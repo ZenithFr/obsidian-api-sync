@@ -244,17 +244,17 @@ export class ObsidianApiSyncWsClient {
     switch (payload.type) {
       case 'FILE_CHANGED':
         if (this.onFileChanged) {
-          this.onFileChanged(payload);
+          Promise.resolve(this.onFileChanged(payload)).catch(console.error);
         }
         break;
       case 'FILE_DELETED':
-        if (this.onFileDeleted) this.onFileDeleted(payload);
+        if (this.onFileDeleted) Promise.resolve(this.onFileDeleted(payload)).catch(console.error);
         break;
       case 'FILE_RENAMED':
-        if (this.onFileRenamed) this.onFileRenamed(payload as FileRenamedPayload);
+        if (this.onFileRenamed) Promise.resolve(this.onFileRenamed(payload as FileRenamedPayload)).catch(console.error);
         break;
       case 'FOLDER_CREATED':
-        if (this.onFolderCreated) this.onFolderCreated(payload as FolderCreatedPayload);
+        if (this.onFolderCreated) Promise.resolve(this.onFolderCreated(payload as FolderCreatedPayload)).catch(console.error);
         break;
       case 'PING':
         // Respond to server keepalive pings
