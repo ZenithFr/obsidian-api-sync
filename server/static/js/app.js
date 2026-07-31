@@ -837,6 +837,8 @@ function setMode(mode) {
         textarea.classList.add('flex-1');
         textarea.value = state.currentContent;
         textarea.focus();
+        textarea.setSelectionRange(0, 0);
+        textarea.scrollTop = 0;
     }
     updateEditorStats();
   }

@@ -285,8 +285,8 @@
         {% endif %}
 
         <div class="space-y-1.5">
-          <label class="block text-xs font-medium text-muted uppercase tracking-wider">Admin Password</label>
-          <input type="password" name="password" autofocus autocomplete="current-password"
+          <label for="password" class="block text-xs font-medium text-muted uppercase tracking-wider">Admin Password</label>
+          <input id="password" type="password" name="password" autofocus autocomplete="current-password"
                  placeholder="Enter your password" class="input w-full" />
         </div>
 
@@ -385,7 +385,7 @@
       <!-- Update path form -->
       <div class="flex flex-col sm:flex-row gap-3 items-end">
         <div class="flex-1 w-full space-y-1.5">
-          <label class="block text-xs font-medium text-muted">Update Path</label>
+          <label for="vault-path-input" class="block text-xs font-medium text-muted">Update Path</label>
           <input id="vault-path-input" type="text" placeholder="/absolute/path/to/vault"
                  class="input w-full font-mono text-xs" />
         </div>
@@ -421,7 +421,7 @@
       </div>
 
       <div class="flex flex-col sm:flex-row gap-3">
-        <input id="token-label-input" type="text"
+        <input id="token-label-input" type="text" aria-label="Token Label"
                placeholder="Token Label (e.g. 'MacBook Pro' or 'Hermes AI')"
                class="input flex-1" />
         <button onclick="generateToken()" class="btn-primary btn-shimmer">
@@ -507,7 +507,7 @@
         <!-- Left: Config Generator -->
         <div class="space-y-4">
           <div class="space-y-1.5">
-            <label class="block text-xs font-medium text-muted uppercase tracking-wider">Select an existing token</label>
+            <label for="connect-token-select" class="block text-xs font-medium text-muted uppercase tracking-wider">Select an existing token</label>
             <select id="connect-token-select" onchange="updateConnectConfig()"
                     class="input w-full appearance-none cursor-pointer pr-10"
                     style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M6%209L12%2015L18%209%22%20stroke%3D%22%23dadada%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%2F%3E%3C%2Fsvg%3E'); background-repeat: no-repeat; background-position: right 12px center;">
@@ -519,13 +519,13 @@
           </div>
 
           <div class="space-y-1.5">
-            <label class="block text-xs font-medium text-muted uppercase tracking-wider">Or manually paste token</label>
+            <label for="connect-token-manual" class="block text-xs font-medium text-muted uppercase tracking-wider">Or manually paste token</label>
             <input id="connect-token-manual" type="text" placeholder="ey..." oninput="updateConnectConfig()"
                    class="input w-full font-mono text-xs" />
           </div>
 
           <div class="space-y-1.5">
-            <label class="block text-xs font-medium text-muted uppercase tracking-wider">Encoded Configuration</label>
+            <label for="connect-config-output" class="block text-xs font-medium text-muted uppercase tracking-wider">Encoded Configuration</label>
             <textarea id="connect-config-output" readonly rows="3"
                       class="input w-full resize-none h-auto py-3 font-mono text-xs bg-background"
                       placeholder="Select or paste a token to generate..."></textarea>

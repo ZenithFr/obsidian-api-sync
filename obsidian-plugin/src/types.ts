@@ -6,6 +6,8 @@ export interface ObsidianApiSyncSettings {
   syncDebounceMs: number;
   autoReconnect: boolean;
   reconnectIntervalMs: number;
+  syncObsidianFolder: boolean;
+  excludeWorkspace: boolean;
 }
 
 export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
@@ -15,6 +17,8 @@ export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   syncDebounceMs: 150,
   autoReconnect: true,
   reconnectIntervalMs: 3000,
+  syncObsidianFolder: false,
+  excludeWorkspace: true,
 };
 
 export interface FolderCreatePayload {

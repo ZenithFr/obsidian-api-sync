@@ -82,16 +82,20 @@ async def list_files(
             continue
             
         parts = file.relative_to(vault_root).parts
-        if any(p.startswith(".") for p in parts):
+        # Skip hidden files/folders (starting with dot) UNLESS it is the .obsidian folder
+        if any(p.startswith(".") and p != ".obsidian" for p in parts):
+            continue
+        relative = str(file.relative_to(vault_root)).replace("\\", "/")
+        
+        # Don't sync our own token to prevent syncing across different environments
+        if relative == ".obsidian/plugins/obsidian-api-sync/data.json":
             continue
 
-        relative = str(file.relative_to(vault_root)).replace("\\", "/")
         if include_content:
             try:
                 # Guard against reading enormous files into memory
                 if file.stat().st_size > MAX_FILE_SIZE_BYTES:
                     continue
-                
                 try:
                     content = file.read_text(encoding="utf-8")
                     md_files.append({"path": relative, "content": content})
