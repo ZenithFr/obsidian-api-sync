@@ -117,7 +117,7 @@ Authorization: Bearer <your_token>
 ### WebSocket Sync
 Connect to `/ws/sync?token=<your_token>` for real-time sync.
 """,
-    version="1.6.0",
+    version="1.7.0",
     openapi_tags=[
         {"name": "files", "description": "Read and write markdown notes in the vault"},
         {"name": "admin", "description": "Token management and server configuration"},

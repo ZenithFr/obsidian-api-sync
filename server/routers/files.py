@@ -1,4 +1,4 @@
-﻿"""
+"""
 routers/files.py -- REST endpoints for reading and writing vault markdown files.
 
 All routes require Bearer token authentication via the get_current_token
@@ -76,8 +76,20 @@ async def list_files(
 
     md_files = []
 
-    for file in vault_root.rglob("*.md"):
+    raw_files = list(vault_root.rglob("*.md"))
+    obsidian_dir = vault_root / ".obsidian"
+    if obsidian_dir.exists():
+        raw_files.extend(list(obsidian_dir.rglob("*")))
+        
+    unique_files = list({f.resolve(): f for f in raw_files if f.is_file()}.values())
+
+    for file in unique_files:
         relative = str(file.relative_to(vault_root)).replace("\\", "/")
+        
+        # Don't sync our own token to prevent syncing across different environments
+        if relative == ".obsidian/plugins/obsidian-api-sync/data.json":
+            continue
+
         if include_content:
             try:
                 # Guard against reading enormous files into memory
@@ -85,6 +97,8 @@ async def list_files(
                     continue
                 content = file.read_text(encoding="utf-8")
                 md_files.append({"path": relative, "content": content})
+            except UnicodeDecodeError:
+                pass # Skip binary files
             except Exception:
                 pass
         else:

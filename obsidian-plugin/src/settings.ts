@@ -14,6 +14,8 @@ interface ObsidianApiSyncPluginLike {
     syncDebounceMs: number;
     autoReconnect: boolean;
     reconnectIntervalMs: number;
+    syncObsidianFolder: boolean;
+    excludeWorkspace: boolean;
   };
   wsClient: {
     getState(): WsState;
@@ -192,6 +194,33 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
               this.plugin.settings.reconnectIntervalMs = parsed;
               await this.plugin.saveSettings();
             }
+          })
+      );
+
+    // ── Obsidian Configuration Sync ───────────────────────────────────────────
+    containerEl.createEl('h3', { text: 'Obsidian Configuration Sync' });
+
+    new Setting(containerEl)
+      .setName('Sync .obsidian folder (Plugins & Settings)')
+      .setDesc('Sync your plugins, themes, and Obsidian settings across devices.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.syncObsidianFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.syncObsidianFolder = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Exclude workspace layout')
+      .setDesc('Prevents workspace.json from syncing to avoid desktop/mobile layout conflicts.')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.excludeWorkspace)
+          .onChange(async (value) => {
+            this.plugin.settings.excludeWorkspace = value;
+            await this.plugin.saveSettings();
           })
       );
 
