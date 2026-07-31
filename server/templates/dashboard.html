@@ -664,6 +664,16 @@ const CSRF_TOKEN = {{ csrf_token | tojson if csrf_token is defined else '""' }};
 localStorage.removeItem('obsidian-sync-theme');
 localStorage.removeItem('hermes-theme');
 
+/* ── API Fetch ────────────────────────────────────────────────── */
+async function apiFetch(url, options = {}) {
+  const token = localStorage.getItem('token');
+  const headers = { ...options.headers };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return fetch(url, { ...options, headers });
+}
+
 /* ── Toast ────────────────────────────────────────────────────── */
 
 function showToast(message, type = 'info') {
@@ -1058,8 +1068,10 @@ async function loadFileVersions(path) {
       tr.innerHTML = `
         <td>${new Date(v.ts).toLocaleString()}</td>
         <td>${(v.size / 1024).toFixed(1)} KB</td>
-        <td><button class="btn-link text-xs" onclick="restoreVersion('${path}', ${v.ts})">Restore</button></td>
+        <td><button class="btn-link text-xs">Restore</button></td>
       `;
+      `;
+      tr.querySelector('button').addEventListener('click', () => restoreVersion(path, v.ts));
       tbody.appendChild(tr);
     }
   }
@@ -1073,8 +1085,18 @@ function closeHistoryDetail() {
 async function restoreVersion(path, ts) {
   if (!confirm(`Restore version from ${new Date(ts).toLocaleString()}? The current file will be moved to trash first.`)) return;
   const encoded = path.split('/').map(encodeURIComponent).join('/');
-  await apiFetch(`/api/history/restore-version/${encoded}?ts=${ts}`, { method: 'POST' });
-  showToast('Version restored successfully');
+  try {
+    const resp = await apiFetch(`/api/history/restore-version/${encoded}?ts=${ts}`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showToast(err.detail || 'Restore failed.', 'error');
+      return;
+    }
+    showToast('Version restored successfully');
+    loadFileVersions(path);
+  } catch (e) {
+    showToast('Restore failed.', 'error');
+  }
 }
 
 document.getElementById('history-search')?.addEventListener('input', function() {
