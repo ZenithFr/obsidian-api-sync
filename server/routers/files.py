@@ -18,7 +18,7 @@ from auth import get_current_token
 from config import settings
 from database import add_audit, get_vault_path
 from routers.ws import manager
-from version_control import save_version, move_to_trash
+from version_control import save_version, move_to_trash, _get_versions_dir
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -282,8 +282,17 @@ async def rename_file(
     if not target_old.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {payload.old_path}")
 
+    if target_old.exists():
+        save_version(Path(vault_path), payload.old_path)
+
     target_new.parent.mkdir(parents=True, exist_ok=True)
     target_old.rename(target_new)
+    
+    old_versions_dir = _get_versions_dir(Path(vault_path)) / payload.old_path
+    if old_versions_dir.exists():
+        new_versions_dir = _get_versions_dir(Path(vault_path)) / payload.new_path
+        new_versions_dir.parent.mkdir(parents=True, exist_ok=True)
+        old_versions_dir.rename(new_versions_dir)
 
     ts = _utcnow_iso()
     await manager.broadcast(

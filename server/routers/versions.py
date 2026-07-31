@@ -51,7 +51,7 @@ async def api_restore_version(path: str, ts: int, token_data: dict = Depends(get
     version_file = None
     if versions_dir.exists():
         for p in versions_dir.iterdir():
-            if p.is_file() and p.name.startswith(f"{ts}_"):
+            if p.is_file() and (p.name.startswith(f"{ts}_") or p.name.startswith(f"{ts}-")):
                 version_file = p
                 break
             
@@ -93,10 +93,18 @@ async def api_restore_trash(trash_path: str, original_path: str, token_data: dic
         raise HTTPException(status_code=404, detail="File not found in trash")
 
     target_file = _sanitize_path(vault_path, original_path)
-    if target_file.exists():
-        raise HTTPException(status_code=409, detail="A file already exists at the original path. Delete it first.")
-
     target_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    import os
+    try:
+        fd = os.open(target_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except (FileExistsError, IsADirectoryError, OSError):
+        raise HTTPException(status_code=409, detail="A file already exists at the original path. Delete it first.")
+        
+    if trash_file.is_dir():
+        target_file.unlink()
+        
     shutil.move(str(trash_file), str(target_file))
 
     await add_audit(method="POST", path=original_path, token_id=token_data["id"], action="RESTORE_TRASH")
