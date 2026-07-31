@@ -9,6 +9,7 @@ connected clients through the shared ConnectionManager instance in ws.py.
 from datetime import datetime, timezone
 from pathlib import Path
 import base64
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
 from fastapi.responses import JSONResponse, Response
@@ -99,9 +100,17 @@ async def list_files(
 
     md_files = []
 
-    raw_files = list(vault_root.rglob("*"))
+    raw_files = await asyncio.to_thread(lambda: list(vault_root.rglob("*")))
         
     unique_files = list({f.resolve(): f for f in raw_files if f.is_file()}.values())
+
+    if include_content:
+        total_size = sum(f.stat().st_size for f in unique_files)
+        if total_size > 50 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Vault too large for bulk fetch. Max 50MB allowed.",
+            )
 
     for file in unique_files:
         relative = str(file.relative_to(vault_root)).replace("\\", "/")
@@ -118,11 +127,11 @@ async def list_files(
                 if file.stat().st_size > MAX_FILE_SIZE_BYTES:
                     continue
                 try:
-                    content = file.read_text(encoding="utf-8")
+                    content = await asyncio.to_thread(file.read_text, encoding="utf-8")
                     md_files.append({"path": relative, "content": content, "is_binary": False})
                 except UnicodeDecodeError:
                     # Binary file
-                    raw_bytes = file.read_bytes()
+                    raw_bytes = await asyncio.to_thread(file.read_bytes)
                     b64_content = base64.b64encode(raw_bytes).decode("ascii")
                     md_files.append({"path": relative, "content": b64_content, "is_binary": True})
             except Exception:
@@ -180,10 +189,11 @@ async def read_file(
 
     size_bytes = target.stat().st_size
     try:
-        content = target.read_text(encoding="utf-8")
+        content = await asyncio.to_thread(target.read_text, encoding="utf-8")
         is_binary = False
     except UnicodeDecodeError:
-        content = base64.b64encode(target.read_bytes()).decode("ascii")
+        raw_bytes = await asyncio.to_thread(target.read_bytes)
+        content = base64.b64encode(raw_bytes).decode("ascii")
         is_binary = True
 
     await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ")
@@ -235,7 +245,7 @@ async def write_file(
     # Conflict detection
     if target.exists() and x_base_hash and not is_binary:
         try:
-            current_text = target.read_text(encoding="utf-8", errors="replace")
+            current_text = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
             current_hash = _fnv1a(current_text)
             if current_hash != x_base_hash:
                 return JSONResponse(
@@ -252,10 +262,13 @@ async def write_file(
 
     # Save version before modifying existing file
     if target.exists():
-        save_version(Path(vault_path), path)
+        await asyncio.to_thread(save_version, Path(vault_path), path)
 
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(body_bytes)
+    try:
+        await asyncio.to_thread(target.write_bytes, body_bytes)
+    except IsADirectoryError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
     size_bytes = target.stat().st_size
 
     ts = _utcnow_iso()
@@ -294,7 +307,10 @@ async def rename_file(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {payload.old_path}")
 
     target_new.parent.mkdir(parents=True, exist_ok=True)
-    target_old.rename(target_new)
+    try:
+        await asyncio.to_thread(target_old.rename, target_new)
+    except IsADirectoryError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
 
     ts = _utcnow_iso()
     await manager.broadcast(
@@ -333,7 +349,7 @@ async def delete_file(
     if not target.is_file():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
 
-    move_to_trash(Path(vault_path), path)
+    await asyncio.to_thread(move_to_trash, Path(vault_path), path)
 
     ts = _utcnow_iso()
     await manager.broadcast({"type": "FILE_DELETED", "path": path, "source": "rest", "ts": ts})
