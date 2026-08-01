@@ -8,22 +8,17 @@ connected clients through the shared ConnectionManager instance in ws.py.
 
 from datetime import datetime, timezone
 from pathlib import Path
-import base64
-import asyncio
-import shutil
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
-from fastapi.responses import JSONResponse, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse, Response, FileResponse
 from pydantic import BaseModel
+import base64
 
 from auth import get_current_token
 from config import settings
 from database import add_audit, get_vault_path
+from limiter import limiter
 from routers.ws import manager
-from version_control import save_version, move_to_trash, _get_versions_dir
-from locks import file_locks
-import os
-from uuid import uuid4
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -51,28 +46,7 @@ def _sanitize_path(vault_path: str, relative_path: str) -> Path:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Path traversal detected: '{relative_path}' escapes the vault root.",
         )
-
-    try:
-        rel_parts = target.relative_to(vault_root).parts
-        if rel_parts and rel_parts[0] in (".sync_versions", ".sync_trash"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access to internal sync folders is forbidden.",
-            )
-    except ValueError:
-        pass
-
     return target
-
-
-def _fnv1a(content: str) -> str:
-    """FNV-1a 32-bit hash — matches the TypeScript client exactly.
-    Used for conflict detection only; not a security primitive."""
-    h = 0x811c9dc5
-    for ch in content.encode("utf-8", errors="replace"):
-        h ^= ch
-        h = (h * 0x01000193) & 0xFFFFFFFF
-    return format(h, '08x')
 
 
 # -- GET /api/files -----------------------------------------------------------
@@ -88,7 +62,9 @@ Use this endpoint to discover which notes exist before reading or modifying them
 Paths use forward-slash separators regardless of the host operating system.
 """,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def list_files(
+    request: Request,
     include_content: bool = False,
     token_data: dict = Depends(get_current_token),
 ) -> JSONResponse:
@@ -104,52 +80,34 @@ async def list_files(
 
     md_files = []
 
-    raw_files = await asyncio.to_thread(lambda: list(vault_root.rglob("*")))
-        
-    unique_files = list({f.resolve(): f for f in raw_files if f.is_file()}.values())
-
-    if include_content:
-        total_size = 0
-        for f in unique_files:
-            try:
-                total_size += f.stat().st_size
-            except FileNotFoundError:
-                pass
-        if total_size > 50 * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Vault too large for bulk fetch. Max 50MB allowed.",
-            )
-
-    for file in unique_files:
+    for file in vault_root.rglob("*"):
+        if not file.is_file():
+            continue
+            
+        parts = file.relative_to(vault_root).parts
+        # Skip hidden files/folders (starting with dot) UNLESS it is the .obsidian folder
+        if any(p.startswith(".") and p != ".obsidian" for p in parts):
+            continue
         relative = str(file.relative_to(vault_root)).replace("\\", "/")
         
-        # Don't sync our own token or version/trash folders
+        # Don't sync our own token to prevent syncing across different environments
         if relative == ".obsidian/plugins/obsidian-api-sync/data.json":
-            continue
-        if relative.startswith(".sync_versions/") or relative.startswith(".sync_trash/") or relative.startswith(".sync_tmp/"):
             continue
 
         if include_content:
             try:
-                size = file.stat().st_size
                 # Guard against reading enormous files into memory
-                if size > MAX_FILE_SIZE_BYTES:
-                    md_files.append({"path": relative, "content": None, "is_binary": True, "size_bytes": size, "hash": ""})
+                if file.stat().st_size > MAX_FILE_SIZE_BYTES:
+                    md_files.append({"path": relative, "content_omitted": True})
                     continue
                 try:
-                    content = await asyncio.to_thread(file.read_text, encoding="utf-8")
-                    h = _fnv1a(content)
-                    md_files.append({"path": relative, "content": content, "is_binary": False, "size_bytes": size, "hash": h})
+                    content = file.read_text(encoding="utf-8")
+                    md_files.append({"path": relative, "content": content})
                 except UnicodeDecodeError:
                     # Binary file
-                    raw_bytes = await asyncio.to_thread(file.read_bytes)
-                    b64_content = base64.b64encode(raw_bytes).decode("ascii")
-                    # Only send content if < 1MB, otherwise force client to download separately
-                    if size > 1024 * 1024:
-                        md_files.append({"path": relative, "content": None, "is_binary": True, "size_bytes": size, "hash": ""})
-                    else:
-                        md_files.append({"path": relative, "content": b64_content, "is_binary": True, "size_bytes": size, "hash": ""})
+                    raw_bytes = file.read_bytes()
+                    b64 = base64.b64encode(raw_bytes).decode("ascii")
+                    md_files.append({"path": relative, "content_base64": b64})
             except Exception:
                 pass
         else:
@@ -182,7 +140,7 @@ async def list_files(
 @router.get(
     "/{path:path}",
     summary="Read the raw content of a markdown note",
-    description="""Returns the complete UTF-8 text content of a single markdown file.
+    description="""Returns the raw file content.
 
 The `path` parameter is the vault-relative path using forward slashes
 (e.g. `journal/2026-06-03.md`).
@@ -190,46 +148,9 @@ The `path` parameter is the vault-relative path using forward slashes
 Returns HTTP 404 if the file does not exist.
 """,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def read_file(
-    path: str,
-    token_data: dict = Depends(get_current_token),
-) -> JSONResponse:
-    vault_path = await get_vault_path()
-    target = _sanitize_path(vault_path, path)
-
-    if not target.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
-
-    if not target.is_file():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
-
-    try:
-        size_bytes = target.stat().st_size
-        try:
-            content = await asyncio.to_thread(target.read_text, encoding="utf-8")
-            is_binary = False
-        except UnicodeDecodeError:
-            raw_bytes = await asyncio.to_thread(target.read_bytes)
-            content = base64.b64encode(raw_bytes).decode("ascii")
-            is_binary = True
-    except FileNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
-
-    await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ")
-
-    return JSONResponse(content={"path": path, "content": content, "size_bytes": size_bytes, "is_binary": is_binary})
-
-
-# -- GET /api/files/download/{path} -------------------------------------------
-
-from fastapi.responses import FileResponse
-
-@router.get(
-    "/download/{path:path}",
-    summary="Download raw file content",
-    description="Returns the raw file as a streaming binary response, supporting Range headers.",
-)
-async def download_file(
+    request: Request,
     path: str,
     token_data: dict = Depends(get_current_token),
 ) -> FileResponse:
@@ -242,145 +163,10 @@ async def download_file(
     if not target.is_file():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
 
-    await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ_DOWNLOAD")
+    await add_audit(method="GET", path=path, token_id=token_data["id"], action="READ")
 
-    return FileResponse(target)
+    return FileResponse(path=target)
 
-
-# -- POST /api/files/chunk ----------------------------------------------------
-
-class ChunkPayload(BaseModel):
-    upload_id: str
-    chunk_index: int
-    total_chunks: int
-    data: str  # Base64
-
-@router.delete(
-    "/chunk/{upload_id}",
-    summary="Cancel a chunked upload",
-    description="Deletes temporary chunks for an aborted upload.",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
-async def cancel_chunked_upload(
-    upload_id: str,
-    token_data: dict = Depends(get_current_token),
-) -> Response:
-    vault_path = await get_vault_path()
-    if not upload_id.isalnum():
-        raise HTTPException(status_code=400, detail="Invalid upload ID")
-    tmp_dir = Path(vault_path) / ".sync_tmp" / upload_id
-    if tmp_dir.exists():
-        import shutil
-        await asyncio.to_thread(shutil.rmtree, tmp_dir, ignore_errors=True)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-@router.post(
-    "/chunk",
-    summary="Upload a file chunk",
-    description="Upload a base64 encoded chunk for a large file.",
-    status_code=status.HTTP_200_OK,
-)
-async def upload_chunk(
-    payload: ChunkPayload,
-    token_data: dict = Depends(get_current_token),
-) -> JSONResponse:
-    if not payload.upload_id.isalnum():
-        raise HTTPException(status_code=400, detail="Invalid upload ID")
-    vault_path = await get_vault_path()
-    tmp_dir = Path(vault_path) / ".sync_tmp" / payload.upload_id
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    
-    chunk_file = tmp_dir / str(payload.chunk_index)
-    raw_bytes = base64.b64decode(payload.data)
-    
-    await asyncio.to_thread(chunk_file.write_bytes, raw_bytes)
-    return JSONResponse(content={"status": "ok", "chunk": payload.chunk_index})
-
-
-# -- POST /api/files/commit ---------------------------------------------------
-
-class CommitPayload(BaseModel):
-    upload_id: str
-    path: str
-    is_binary: bool
-    total_chunks: int
-
-@router.post(
-    "/commit",
-    summary="Commit a chunked upload",
-    description="Assembles chunks and saves the final file.",
-    status_code=status.HTTP_200_OK,
-)
-async def commit_chunked_upload(
-    payload: CommitPayload,
-    token_data: dict = Depends(get_current_token),
-    x_base_hash: str | None = Header(None, alias="X-Base-Hash"),
-) -> JSONResponse:
-    vault_path = await get_vault_path()
-    target = _sanitize_path(vault_path, payload.path)
-    if not payload.upload_id.isalnum():
-        raise HTTPException(status_code=400, detail="Invalid upload ID")
-    tmp_dir = Path(vault_path) / ".sync_tmp" / payload.upload_id
-
-    if not tmp_dir.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Upload ID not found")
-
-    chunks = sorted([f for f in tmp_dir.iterdir() if f.is_file()], key=lambda x: int(x.name))
-    
-    if len(chunks) != payload.total_chunks:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Expected {payload.total_chunks} chunks, found {len(chunks)}")
-        
-    for i, chunk in enumerate(chunks):
-        if int(chunk.name) != i:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Missing chunk {i}")
-    
-    lock = await file_locks.acquire(str(target))
-    async with lock:
-        if target.exists() and x_base_hash and not payload.is_binary:
-            try:
-                current_text = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
-                current_hash = _fnv1a(current_text)
-                if current_hash != x_base_hash:
-                    shutil.rmtree(tmp_dir, ignore_errors=True)
-                    return JSONResponse(
-                        status_code=409,
-                        content={
-                            "type": "CONFLICT",
-                            "path": payload.path,
-                            "server_content": current_text,
-                            "client_content": "", # Too large to send back in conflict
-                        }
-                    )
-            except OSError:
-                pass
-        
-        if target.exists():
-            await asyncio.to_thread(save_version, Path(vault_path), payload.path)
-        
-        target.parent.mkdir(parents=True, exist_ok=True)
-        
-        def _assemble():
-            tmp_final = target.with_name(f"{target.name}.{uuid4().hex}.tmp")
-            with open(tmp_final, "wb") as outfile:
-                for chunk in chunks:
-                    with open(chunk, "rb") as infile:
-                        import shutil
-                        shutil.copyfileobj(infile, outfile)
-            os.replace(tmp_final, target)
-            import shutil
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            
-        await asyncio.to_thread(_assemble)
-        size_bytes = target.stat().st_size
-
-    ts = _utcnow_iso()
-    await manager.broadcast(
-        {"type": "FILE_CHANGED", "path": payload.path, "content": None, "is_binary": payload.is_binary, "source": "rest", "ts": ts}
-    )
-
-    await add_audit(method="POST", path=payload.path, token_id=token_data["id"], action="WRITE_CHUNKED")
-
-    return JSONResponse(content={"path": payload.path, "status": "written", "size_bytes": size_bytes})
 
 # -- POST /api/files/{path} ---------------------------------------------------
 
@@ -398,11 +184,11 @@ All connected Obsidian clients instantly receive a `FILE_CHANGED` WebSocket broa
 """,
     status_code=status.HTTP_200_OK,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def write_file(
     path: str,
     request: Request,
     token_data: dict = Depends(get_current_token),
-    x_base_hash: str | None = Header(None, alias="X-Base-Hash"),
 ) -> JSONResponse:
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
@@ -416,56 +202,26 @@ async def write_file(
             detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE_BYTES // (1024*1024)} MB.",
         )
 
-    is_binary = False
     try:
         content = body_bytes.decode("utf-8")
+        is_binary = False
     except UnicodeDecodeError:
+        content = None
         is_binary = True
-        content = base64.b64encode(body_bytes).decode("ascii")
 
-    lock = await file_locks.acquire(str(target))
-    async with lock:
-        # Conflict detection
-        if target.exists() and x_base_hash and not is_binary:
-            try:
-                current_text = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
-                current_hash = _fnv1a(current_text)
-                if current_hash != x_base_hash:
-                    return JSONResponse(
-                        status_code=409,
-                        content={
-                            "type": "CONFLICT",
-                            "path": path,
-                            "server_content": current_text,
-                            "client_content": content,
-                        }
-                    )
-            except OSError:
-                pass  # Proceed if read fails
-    
-        # Save version before modifying existing file
-        if target.exists():
-            await asyncio.to_thread(save_version, Path(vault_path), path)
-    
-        target.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            def _atomic_write():
-                tmp = target.with_name(f"{target.name}.{uuid4().hex}.tmp")
-                tmp.write_bytes(body_bytes)
-                os.replace(tmp, target)
-            await asyncio.to_thread(_atomic_write)
-        except IsADirectoryError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
-        size_bytes = target.stat().st_size
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(body_bytes)
+    size_bytes = target.stat().st_size
 
     ts = _utcnow_iso()
+    # For binary files, we do not broadcast the content. The client will fetch it.
     await manager.broadcast(
-        {"type": "FILE_CHANGED", "path": path, "content": content, "is_binary": is_binary, "source": "rest", "ts": ts}
+        {"type": "FILE_CHANGED", "path": path, "content": content, "source": "rest", "ts": ts}
     )
 
     await add_audit(method="POST", path=path, token_id=token_data["id"], action="WRITE")
 
-    return JSONResponse(content={"path": path, "status": "written", "size_bytes": size_bytes})
+    return JSONResponse(content={"path": path, "status": "written", "size_bytes": size_bytes, "is_binary": is_binary})
 
 
 # -- POST /api/files/rename ---------------------------------------------------
@@ -482,7 +238,9 @@ class RenamePayload(BaseModel):
     description="Renames or moves a file to a new path. Broadcasts FILE_RENAMED to all WebSocket clients.",
     status_code=status.HTTP_200_OK,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def rename_file(
+    request: Request,
     payload: RenamePayload,
     token_data: dict = Depends(get_current_token),
 ) -> JSONResponse:
@@ -490,28 +248,11 @@ async def rename_file(
     target_old = _sanitize_path(vault_path, payload.old_path)
     target_new = _sanitize_path(vault_path, payload.new_path)
 
-    lock_old = await file_locks.acquire(str(target_old))
-    lock_new = await file_locks.acquire(str(target_new))
-    locks = [lock_old, lock_new] if str(target_old) < str(target_new) else [lock_new, lock_old]
-    async with locks[0]:
-        async with locks[1]:
-            if not target_old.exists():
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {payload.old_path}")
-        
-            if target_old.exists():
-                await asyncio.to_thread(save_version, Path(vault_path), payload.old_path)
-        
-            target_new.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                await asyncio.to_thread(target_old.rename, target_new)
-            except IsADirectoryError:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target path is a directory.")
-            
-            old_versions_dir = _get_versions_dir(Path(vault_path)) / payload.old_path
-            if old_versions_dir.exists():
-                new_versions_dir = _get_versions_dir(Path(vault_path)) / payload.new_path
-                new_versions_dir.parent.mkdir(parents=True, exist_ok=True)
-                await asyncio.to_thread(old_versions_dir.rename, new_versions_dir)
+    if not target_old.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {payload.old_path}")
+
+    target_new.parent.mkdir(parents=True, exist_ok=True)
+    target_old.rename(target_new)
 
     ts = _utcnow_iso()
     await manager.broadcast(
@@ -537,22 +278,22 @@ async def rename_file(
     description="Permanently deletes the specified markdown file. Returns HTTP 404 if the file does not exist.",
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@limiter.limit(settings.API_RATE_LIMIT)
 async def delete_file(
+    request: Request,
     path: str,
     token_data: dict = Depends(get_current_token),
 ) -> Response:
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
 
-    lock = await file_locks.acquire(str(target))
-    async with lock:
-        if not target.exists():
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
-    
-        if not target.is_file():
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
-    
-        await asyncio.to_thread(move_to_trash, Path(vault_path), path)
+    if not target.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {path}")
+
+    if not target.is_file():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Path is not a file: {path}")
+
+    target.unlink()
 
     ts = _utcnow_iso()
     await manager.broadcast({"type": "FILE_DELETED", "path": path, "source": "rest", "ts": ts})

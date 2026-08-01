@@ -1,4 +1,4 @@
-﻿"""
+"""
 database.py — Async SQLite access layer for Obsidian API Sync API.
 
 All DB operations are fully async via aiosqlite.  The vault path is stored in
@@ -11,16 +11,22 @@ is returned once at creation and never stored.
 """
 
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import aiosqlite
 
 from config import settings
 
+logger = logging.getLogger(__name__)
+
 # Module-level constant so callers can reference the configured DB file path.
-DATABASE_PATH: str = settings.DB_PATH
+# Resolved to an absolute path so aiosqlite opens the same file regardless of
+# the process working directory (fixes cwd-coupling for the DB itself).
+DATABASE_PATH: str = str(Path(settings.DB_PATH).expanduser().resolve())
 
 
 # -- Schema -------------------------------------------------------------------
@@ -53,6 +59,18 @@ CREATE TABLE IF NOT EXISTS server_config (
 
 # -- Helpers ------------------------------------------------------------------
 
+# SQLite busy timeout: how long aiosqlite will retry acquiring the write lock
+# before raising OperationalError("database is locked").  Without this, any
+# two concurrent requests that both try to write (e.g. an audit INSERT while
+# a list SELECT holds a read transaction) immediately fail with a 500.
+_DB_TIMEOUT_SECONDS: int = 10
+
+
+def _connect() -> aiosqlite.Connection:
+    """Open the database with a sensible busy timeout."""
+    return aiosqlite.connect(DATABASE_PATH, timeout=_DB_TIMEOUT_SECONDS)
+
+
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -73,7 +91,7 @@ async def init_db() -> None:
     Create all tables, run schema migrations, and seed the default vault path.
     Called once at application startup via the FastAPI lifespan handler.
     """
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         await db.executescript(_SCHEMA_SQL)
 
@@ -85,17 +103,40 @@ async def init_db() -> None:
                 "ALTER TABLE tokens ADD COLUMN token_prefix TEXT NOT NULL DEFAULT ''"
             )
 
+        # Seed vault_path as an absolute, cwd-independent path.
+        abs_vault = str(Path(settings.DEFAULT_VAULT_PATH).expanduser().resolve())
         await db.execute(
             "INSERT OR IGNORE INTO server_config (key, value) VALUES ('vault_path', ?)",
-            (settings.DEFAULT_VAULT_PATH,),
+            (abs_vault,),
         )
+
+        # P3: auto-generate a first-run token so a fresh install can
+        # authenticate immediately without touching the database manually.
+        async with db.execute("SELECT COUNT(*) AS n FROM tokens") as cursor:
+            row = await cursor.fetchone()
+            token_count: int = row["n"]
+
         await db.commit()
+
+    if token_count == 0:
+        raw_token = await create_token(label="first-run")
+        logger.warning(
+            "\n"
+            "=================================================================\n"
+            " FIRST-RUN TOKEN (shown once — copy it now):\n"
+            " %s\n"
+            "=================================================================\n"
+            " Configure this token in the Obsidian plugin or API client.\n"
+            " You can also create additional tokens via the /dashboard.\n"
+            "=================================================================",
+            raw_token,
+        )
 
 
 # -- Vault Path ---------------------------------------------------------------
 
 async def get_vault_path() -> str:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT value FROM server_config WHERE key = 'vault_path'"
@@ -106,14 +147,22 @@ async def get_vault_path() -> str:
             return row["value"]
 
 
-async def set_vault_path(path: str) -> None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+async def set_vault_path(path: str) -> str:
+    """
+    Normalize *path* to an absolute, cwd-independent location and persist it.
+
+    The resolved absolute path is returned so callers (e.g. the dashboard
+    endpoint) can display exactly what was stored.
+    """
+    normalized = str(Path(path).expanduser().resolve())
+    async with _connect() as db:
         await db.execute(
             "INSERT INTO server_config (key, value) VALUES ('vault_path', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (path,),
+            (normalized,),
         )
         await db.commit()
+    return normalized
 
 
 # -- Token Management ---------------------------------------------------------
@@ -128,7 +177,7 @@ async def create_token(label: str) -> str:
     token_prefix = raw_token[:8]
     created = _utcnow_iso()
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "INSERT INTO tokens (token, token_prefix, label, created) VALUES (?, ?, ?, ?)",
             (token_hash, token_prefix, label, created),
@@ -145,7 +194,7 @@ async def verify_token(raw_token: str) -> dict[str, Any] | None:
     token_hash = _hash_token(raw_token)
     now = _utcnow_iso()
 
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, token_prefix, label, created, last_used FROM tokens WHERE token = ?",
@@ -168,7 +217,7 @@ async def verify_token(raw_token: str) -> dict[str, Any] | None:
 
 async def list_tokens() -> list[dict[str, Any]]:
     """Return all token rows — hash is NOT returned, only token_prefix."""
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, token_prefix, label, created, last_used FROM tokens ORDER BY id ASC"
@@ -178,7 +227,7 @@ async def list_tokens() -> list[dict[str, Any]]:
 
 
 async def revoke_token(token_id: int) -> None:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         await db.execute("DELETE FROM tokens WHERE id = ?", (token_id,))
         await db.commit()
 
@@ -192,7 +241,7 @@ async def add_audit(
     action: str,
 ) -> None:
     ts = _utcnow_iso()
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         await db.execute(
             "INSERT INTO audit_log (ts, method, path, token_id, action) VALUES (?, ?, ?, ?, ?)",
             (ts, method, path, token_id, action),
@@ -201,7 +250,7 @@ async def add_audit(
 
 
 async def get_audit_log(limit: int = 50) -> list[dict[str, Any]]:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
+    async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, ts, method, path, token_id, action FROM audit_log ORDER BY id DESC LIMIT ?",

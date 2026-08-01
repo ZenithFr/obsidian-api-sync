@@ -8,11 +8,6 @@ export interface ObsidianApiSyncSettings {
   reconnectIntervalMs: number;
   syncObsidianFolder: boolean;
   excludeWorkspace: boolean;
-  syncMode: 'include_all' | 'include_selected' | 'exclude_selected';
-  selectiveSyncPaths: string;
-  allowedExtensions: string;
-  fileHashes: Record<string, string>;
-  encryptionPassword?: string;
 }
 
 export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
@@ -24,11 +19,6 @@ export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   reconnectIntervalMs: 3000,
   syncObsidianFolder: false,
   excludeWorkspace: true,
-  syncMode: 'include_all',
-  selectiveSyncPaths: '',
-  allowedExtensions: 'md, canvas, pdf, png, jpg, jpeg, gif, webp, mp3, mp4',
-  fileHashes: {},
-  encryptionPassword: '',
 };
 
 export interface FolderCreatePayload {
@@ -43,8 +33,7 @@ export type OutboundPayload = FileModifyPayload | FileDeletePayload | FileRename
 export interface FileChangedPayload {
   type: 'FILE_CHANGED';
   path: string;
-  content: string;
-  is_binary?: boolean;
+  content: string | null;
   source: 'ws' | 'rest';
   ts: string;
 }
@@ -71,12 +60,6 @@ export interface FolderCreatedPayload {
   ts: string;
 }
 
-export interface VaultRestoredPayload {
-  type: 'VAULT_RESTORED';
-  snapshot_id: string;
-  ts: string;
-}
-
 export interface ConnectedPayload {
   type: 'CONNECTED';
   client_id: string;
@@ -94,7 +77,6 @@ export interface FileModifyPayload {
   type: 'FILE_MODIFY';
   path: string;
   content: string;
-  is_binary?: boolean;
 }
 
 export interface FileDeletePayload {
@@ -119,7 +101,6 @@ export type InboundPayload =
   | FileDeletedPayload
   | FileRenamedPayload
   | FolderCreatedPayload
-  | VaultRestoredPayload
   | { type: 'PING'; ts: string }
   | { type: 'ERROR'; code: string; message: string }
   | { type: 'CONNECTED'; client_id: string };

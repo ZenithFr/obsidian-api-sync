@@ -28,9 +28,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from starlette.middleware.sessions import SessionMiddleware
 
 from config import settings
@@ -44,20 +43,13 @@ from database import (
     revoke_token,
     set_vault_path,
 )
+from limiter import limiter
 from routers.files import router as files_router
 from routers.ws import router as ws_router
-from routers.versions import router as versions_router
-from routers.snapshots import router as snapshots_router
 
 logger = logging.getLogger(__name__)
 
 # -- Rate limiter setup -------------------------------------------------------
-
-limiter = Limiter(
-    key_func=get_remote_address,
-    enabled=settings.RATE_LIMIT_ENABLED,
-    default_limits=["200/minute"],
-)
 
 # -- Templates ----------------------------------------------------------------
 
@@ -69,7 +61,8 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 
 _DANGEROUS_PATH_PATTERNS = re.compile(
     r"^(/etc|/root|/sys|/proc|/dev|/boot|/usr/bin|/usr/sbin|/bin|/sbin"
-    r"|[Cc]:[/\\][Ww]indows|[Cc]:[/\\][Pp]rogram)",
+    r"|[Cc]:[/\\][Ww]indows|[Cc]:[/\\][Pp]rogram"
+    r"|.*[/\\]\.(ssh|aws|gnupg|docker|kube))",
     re.IGNORECASE,
 )
 
@@ -78,11 +71,15 @@ def _validate_vault_path(path: str) -> None:
     """
     Reject obviously dangerous vault paths.
 
+    Both the raw path *and* the fully-resolved path are checked so that
+    ``..``-based traversals that resolve into sensitive directories (e.g.
+    ``../../etc``) are also rejected.
+
     Raises:
         HTTPException 400: If the path starts with a sensitive system directory.
     """
-    resolved = str(Path(path).resolve())
-    if _DANGEROUS_PATH_PATTERNS.match(resolved) or _DANGEROUS_PATH_PATTERNS.match(path):
+    raw_resolved = str(Path(path).expanduser().resolve())
+    if _DANGEROUS_PATH_PATTERNS.match(path) or _DANGEROUS_PATH_PATTERNS.match(raw_resolved):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -94,25 +91,20 @@ def _validate_vault_path(path: str) -> None:
 
 # -- Lifespan -----------------------------------------------------------------
 
-async def _snapshot_scheduler():
-    while True:
-        await asyncio.sleep(24 * 60 * 60)
-        try:
-            vault_path = Path(await get_vault_path())
-            from routers.snapshots import _create_snapshot
-            await asyncio.to_thread(_create_snapshot, vault_path, False)
-            logger.info("Automatic 24-hour vault snapshot created.")
-        except Exception as e:
-            logger.error(f"Failed to create automatic snapshot: {e}")
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     vault_path = await get_vault_path()
-    Path(vault_path).mkdir(parents=True, exist_ok=True)
-    task = asyncio.create_task(_snapshot_scheduler())
+    vault_root = Path(vault_path)  # always absolute after init_db
+    vault_root.mkdir(parents=True, exist_ok=True)
+    md_count = sum(1 for _ in vault_root.rglob("*.md"))
+    if md_count == 0:
+        logger.warning(
+            "Vault contains no .md files: %s — "
+            "check that vault_path is correct (run: GET /dashboard/vault-path)",
+            vault_path,
+        )
     yield
-    task.cancel()
 
 
 # -- Application --------------------------------------------------------------
@@ -170,8 +162,6 @@ if _cors_origins:
 
 app.include_router(files_router)
 app.include_router(ws_router)
-app.include_router(versions_router)
-app.include_router(snapshots_router)
 
 # -- Static Files -------------------------------------------------------------
 
@@ -305,12 +295,12 @@ async def api_set_vault_path(request: Request) -> JSONResponse:
     path = path.strip()
     _validate_vault_path(path)   # #9: block dangerous system paths
 
-    await set_vault_path(path)
-    Path(path).mkdir(parents=True, exist_ok=True)
+    normalized_path = await set_vault_path(path)
+    Path(normalized_path).mkdir(parents=True, exist_ok=True)
 
-    await add_audit(method="POST", path=path, token_id=None, action="SET_VAULT_PATH")
+    await add_audit(method="POST", path=normalized_path, token_id=None, action="SET_VAULT_PATH")
 
-    return JSONResponse(content={"status": "ok", "vault_path": path})
+    return JSONResponse(content={"status": "ok", "vault_path": normalized_path})
 
 
 # -- Dashboard: Tokens --------------------------------------------------------
@@ -484,9 +474,13 @@ async def obsidian_web_app(request: Request) -> Response:
 # -- Dev entrypoint -----------------------------------------------------------
 
 if __name__ == "__main__":
+    # reload=True spawns a watcher subprocess; if the parent is SIGKILLed the
+    # worker survives with PPID 1 and holds the port, causing crash-loops when
+    # the service manager tries to restart.  Only enable reload in dev mode.
+    _dev_mode = os.environ.get("DEV", "").strip().lower() in ("1", "true", "yes")
     uvicorn.run(
         "main:app",
         host=settings.HOST,
         port=settings.PORT,
-        reload=True,
+        reload=_dev_mode,
     )

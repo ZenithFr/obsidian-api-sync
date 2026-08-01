@@ -616,14 +616,19 @@ async function openFile(filePath) {
   if (!safe) { showToast('Invalid file path.', 'error'); return; }
 
   try {
+    const isBinary = !/\.(md|txt|csv|json|yaml|yml|py|js|ts|css|html|sh|bat|xml|ini)$/i.test(safe);
     const res = await fetch(`/api/files/${encodeURIComponent(safe)}`, {
       headers: activeToken ? { 'Authorization': `Bearer ${activeToken}` } : {},
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    
+    let content = '';
+    if (!isBinary) {
+        content = await res.text();
+    }
 
     state.currentFile    = safe;
-    state.currentContent = data.content || '';
+    state.currentContent = content;
     state.unsaved        = false;
 
     // Always open in Reading Mode (default per spec)
@@ -642,9 +647,9 @@ async function openFile(filePath) {
 async function saveCurrentFile() {
   if (!state.currentFile) return;
   const safe = sanitizeFilePath(state.currentFile);
-  if (!safe) { showToast('Invalid file path.', 'error'); return; }
+  if (!safe) return;
 
-  const content = document.getElementById('editor-textarea').value;
+  const content = state.cmView ? state.cmView.getValue() : document.getElementById('editor-textarea').value;
   // 10 MB guard — mirrors server MAX_FILE_SIZE_BYTES (DoS defense)
   if (new Blob([content]).size > 10 * 1024 * 1024) {
     showToast('File too large to save (max 10 MB).', 'error');
@@ -735,6 +740,8 @@ async function renameFile(oldPath, newPath) {
     if (activeToken) headers['Authorization'] = `Bearer ${activeToken}`;
     const res = await fetch('/api/files/rename', {
       method: 'POST', headers,
+      body: JSON.stringify({ oldPath: safeOld, newPath: safeNew })
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     showToast('Note renamed.', 'success');
     if (state.currentFile === safeOld) state.currentFile = safeNew;
@@ -754,8 +761,6 @@ async function renameFile(oldPath, newPath) {
    ════════════════════════════════════════════════════════════════ */
 
 function setMode(mode) {
-  state.mode = mode;
-
   const btnReading       = document.getElementById('btn-reading');
   const btnEditing       = document.getElementById('btn-editing');
   const readingContainer = document.getElementById('reading-container');
@@ -764,14 +769,15 @@ function setMode(mode) {
   const welcomeState     = document.getElementById('welcome-state');
   const btnSave          = document.getElementById('btn-save');
 
+  const isBinary = state.currentFile && !/\.(md|txt|csv|json|yaml|yml|py|js|ts|css|html|sh|bat|xml|ini)$/i.test(state.currentFile);
+  if (isBinary && mode === 'editing') return; // Cannot edit binary files
+
+  state.mode = mode;
+
   if (mode === 'reading') {
-    // If transitioning from editing, capture current textarea value immediately
-    const textarea = document.getElementById('editor-textarea');
-    if (textarea && textarea.value !== undefined) {
-      state.currentContent = textarea.value;
-      if (state.unsaved) {
-        saveCurrentFile();
-      }
+    // Current content is already kept up to date by editor on-change listeners.
+    if (state.unsaved) {
+      saveCurrentFile();
     }
 
     // Reading mode
@@ -802,9 +808,38 @@ function setMode(mode) {
     btnReading.classList.remove('active-mode');
     btnEditing.classList.add('active-mode');
 
-    const textarea = document.getElementById('editor-textarea');
-    textarea.value = state.currentContent;
-    textarea.focus();
+    if (window.CodeMirror) {
+        if (!state.cmView) {
+            state.cmView = CodeMirror.fromTextArea(document.getElementById('editor-textarea'), {
+                mode: 'markdown',
+                theme: 'material-darker',
+                lineWrapping: true,
+                viewportMargin: Infinity
+            });
+            state.cmView.on('change', (cm) => {
+                state.currentContent = cm.getValue();
+                state.unsaved = true;
+                updateEditorStats();
+                document.getElementById('save-status').textContent = 'Unsaved changes';
+                document.getElementById('btn-save').classList.remove('hidden');
+            });
+        }
+        if (state.cmView.getValue() !== state.currentContent) {
+            state.cmView.setValue(state.currentContent);
+            // Move cursor to top to avoid jumping
+            state.cmView.setCursor(0, 0);
+        }
+        state.cmView.focus();
+        // CM5 hides the original textarea automatically
+    } else {
+        const textarea = document.getElementById('editor-textarea');
+        textarea.style.display = 'block';
+        textarea.classList.add('flex-1');
+        textarea.value = state.currentContent;
+        textarea.focus();
+        textarea.setSelectionRange(0, 0);
+        textarea.scrollTop = 0;
+    }
     updateEditorStats();
   }
 }
@@ -812,13 +847,49 @@ function setMode(mode) {
 function updateEditorContent() {
   if (!state.currentFile) return;
 
-  // Reading mode: render sanitized HTML
+  const isBinary = !/\.(md|txt|csv|json|yaml|yml|py|js|ts|css|html|sh|bat|xml|ini)$/i.test(state.currentFile);
   const readerPane = document.getElementById('reader-pane');
-  const rendered = renderMarkdown(state.currentContent);
-  readerPane.innerHTML = rendered; // DOMPurify already sanitized in renderMarkdown()
+  const textarea = document.getElementById('editor-textarea');
+  const btnEditingMode = document.getElementById('btn-editing');
+  
+  if (isBinary) {
+    if (/\.(png|jpe?g|gif|webp|svg)$/i.test(state.currentFile)) {
+        readerPane.innerHTML = `<img src="/api/files/${encodeURIComponent(state.currentFile)}" class="max-w-full h-auto rounded-lg shadow-sm mx-auto mt-4" />`;
+    } else if (/\.(mp4|webm)$/i.test(state.currentFile)) {
+        readerPane.innerHTML = `<video src="/api/files/${encodeURIComponent(state.currentFile)}" controls class="max-w-full rounded-lg shadow-sm mx-auto mt-4"></video>`;
+    } else if (/\.pdf$/i.test(state.currentFile)) {
+        readerPane.innerHTML = `<iframe src="/api/files/${encodeURIComponent(state.currentFile)}" class="w-full h-[80vh] border-0 rounded-lg shadow-sm mt-4"></iframe>`;
+    } else {
+        readerPane.innerHTML = `<div class="p-8 text-center text-[var(--color-text-muted)] mt-12">
+            <svg class="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+            </svg>
+            <p>Binary file format not previewable.</p>
+            <a href="/api/files/${encodeURIComponent(state.currentFile)}" download class="mt-4 inline-block px-4 py-2 bg-[var(--color-accent)] text-white rounded-md hover:bg-blue-600 transition-colors">Download File</a>
+        </div>`;
+    }
+    textarea.value = '';
+    textarea.disabled = true;
+    if (btnEditingMode) btnEditingMode.style.display = 'none';
+  } else {
+    // Reading mode: render sanitized HTML
+    const rendered = renderMarkdown(state.currentContent);
+    readerPane.innerHTML = rendered;
 
-  // Editor mode: raw text
-  document.getElementById('editor-textarea').value = state.currentContent;
+    // Editor mode: raw text
+    if (window.CodeMirror && state.cmView) {
+        if (state.cmView.getValue() !== state.currentContent) {
+            state.cmView.setValue(state.currentContent);
+            state.cmView.setCursor(0, 0);
+        }
+    } else {
+        textarea.style.display = 'block';
+        textarea.classList.add('flex-1');
+        textarea.value = state.currentContent;
+    }
+    textarea.disabled = false;
+    if (btnEditingMode) btnEditingMode.style.display = 'flex';
+  }
   updateEditorStats();
 }
 
@@ -889,7 +960,7 @@ function onEditorKeydown(e) {
 }
 
 function updateEditorStats() {
-  const text = document.getElementById('editor-textarea').value;
+  const text = state.cmView ? state.cmView.getValue() : document.getElementById('editor-textarea').value;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   document.getElementById('stat-words').textContent = `${words} word${words !== 1 ? 's' : ''}`;
   document.getElementById('stat-chars').textContent = `${text.length} chars`;
@@ -1209,8 +1280,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-reading')?.addEventListener('click', () => setMode('reading'));
   document.getElementById('btn-editing')?.addEventListener('click', () => setMode('editing'));
   document.getElementById('btn-save')?.addEventListener('click', saveCurrentFile);
-  document.getElementById('btn-rename')?.addEventListener('click', promptRenameFile);
-  document.getElementById('btn-delete')?.addEventListener('click', deleteCurrentFile);
 
   const textarea = document.getElementById('editor-textarea');
   if (textarea) {
