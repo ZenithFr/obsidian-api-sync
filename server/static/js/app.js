@@ -734,7 +734,8 @@ async function renameFile(oldPath, newPath) {
     const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN };
     if (activeToken) headers['Authorization'] = `Bearer ${activeToken}`;
     const res = await fetch('/api/files/rename', {
-      method: 'POST', headers,
+      method: 'POST', headers, body: JSON.stringify({ old_path: safeOld, new_path: safeNew })
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     showToast('Note renamed.', 'success');
     if (state.currentFile === safeOld) state.currentFile = safeNew;

@@ -658,7 +658,7 @@
      ═══════════════════════════════════════════════════════════════ -->
 <script>
 // CSRF token injected from server session (double-submit pattern)
-const CSRF_TOKEN = {{ csrf_token | tojson if csrf_token is defined else '""' }};
+const CSRF_TOKEN = "{{ csrf_token if csrf_token is defined else '' }}";
 
 // Remove legacy theme keys
 localStorage.removeItem('obsidian-sync-theme');
