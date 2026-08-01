@@ -19,7 +19,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
   shouldSyncPath(path: string, isFolder: boolean = false): boolean {
     if (path.startsWith(this.app.vault.configDir + '/')) {
-      return true; // Config dir is handled separately via syncObsidianFolder
+      if (!this.settings.syncObsidianFolder) return false;
+      if (this.settings.excludeWorkspace && path === `${this.app.vault.configDir}/workspace.json`) return false;
+      if (path === `${this.app.vault.configDir}/plugins/obsidian-api-sync/data.json`) return false;
+      return true;
     }
 
     if (!isFolder) {
@@ -211,6 +214,20 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         cc = decC.decryptedStr;
       } catch (e) {
         console.error("Failed to decrypt conflict payload", e);
+      }
+
+      if (payload.path.startsWith(this.app.vault.configDir + '/')) {
+        console.log(`[ObsidianApiSync] Silent conflict resolution (Server Wins) for ${payload.path}`);
+        const file = this.app.vault.getAbstractFileByPath(payload.path);
+        if (file instanceof TFile) {
+          this.remoteChangeLocks.set(payload.path, Date.now() + 800);
+          if (is_binary) {
+            await this.app.vault.modifyBinary(file, this.base64ToArrayBuffer(sc));
+          } else {
+            await this.app.vault.modify(file, sc);
+          }
+        }
+        return;
       }
 
       new ConflictResolutionModal(
