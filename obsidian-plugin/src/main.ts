@@ -182,8 +182,199 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     this.wsClient = createWsClient();
     this.wsClient.setAutoReconnect(this.settings.autoReconnect);
     
+
     // ── WS Callbacks ──────────────────────────────────────────────────────────
 
+    this.wsClient.onVaultRestored = async (payload) => {
+      new Notice(`ObsidianApiSync: Server vault restored from snapshot ${payload.snapshot_id}! Re-syncing...`, 8000);
+      
+      // Reset caches
+      
+      // Pull all files after a brief delay to allow server to finish sending broadcasts
+      setTimeout(() => {
+        this.pullAllFiles();
+      }, 1000);
+    };
+
+    this.wsClient.onFileChanged = async (payload) => {
+      try {
+        const dec = await this.decryptInboundContent(payload.path, payload.content, !!payload.is_binary);
+        payload.content = dec.decryptedStr;
+        payload.is_binary = dec.decryptedIsBinary;
+      } catch (err) {
+        this.showError(`Failed to decrypt WebSocket change for ${payload.path}`, err);
+        return;
+      }
+
+      if (payload.path.startsWith(this.app.vault.configDir + '/')) {
+        if (!this.settings.syncObsidianFolder) return;
+        if (this.settings.excludeWorkspace && payload.path === `${this.app.vault.configDir}/workspace.json`) return;
+        if (payload.path === `${this.app.vault.configDir}/plugins/obsidian-api-sync/data.json`) return;
+        
+        try {
+          const exists = await this.app.vault.adapter.exists(payload.path);
+          if (exists) {
+            const currentContent = await this.app.vault.adapter.read(payload.path);
+            const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
+            const normalizedRemote = payload.content.replace(/\r\n/g, '\n');
+            if (normalizedLocal !== normalizedRemote) {
+              if (this.modifyDebounceTimers.has(payload.path)) {
+                clearTimeout(this.modifyDebounceTimers.get(payload.path)!);
+                this.modifyDebounceTimers.delete(payload.path);
+              }
+              this.remoteChangeLocks.set(payload.path, Date.now() + 800);
+              await this.app.vault.adapter.write(payload.path, payload.content);
+            }
+          } else {
+            await this.ensureAdapterFolderExists(payload.path);
+            await this.app.vault.adapter.write(payload.path, payload.content);
+          }
+        } catch (err) {
+          this.showError("Failed to process remote .obsidian change:", err);
+        }
+        return;
+      }
+
+      const file = this.app.vault.getAbstractFileByPath(payload.path);
+
+      if (file instanceof TFile) {
+        // Echo-loop prevention: only write if content actually differs
+        let normalizedLocal = '';
+        let normalizedRemote = '';
+        if (payload.is_binary) {
+          const currentBuffer = await this.app.vault.readBinary(file);
+          normalizedLocal = this.arrayBufferToBase64(currentBuffer);
+          normalizedRemote = payload.content;
+        } else {
+          const currentContent = await this.app.vault.read(file);
+          normalizedLocal = currentContent.replace(/\r\n/g, '\n');
+          normalizedRemote = payload.content.replace(/\r\n/g, '\n');
+        }
+        if (normalizedLocal !== normalizedRemote) {
+          if (this.modifyDebounceTimers.has(file.path)) {
+            clearTimeout(this.modifyDebounceTimers.get(file.path)!);
+            this.modifyDebounceTimers.delete(file.path);
+          }
+          this.remoteChangeLocks.set(file.path, Date.now() + 800);
+          try {
+            if (payload.is_binary) {
+              await this.app.vault.modifyBinary(file, this.base64ToArrayBuffer(payload.content));
+            } else {
+              await this.app.vault.modify(file, payload.content);
+            }
+          } catch (err) {
+            this.showError("modify failed", err);
+          }
+        }
+      } else if (!file) {
+        // File doesn't exist locally yet — create it
+        try {
+          await this.ensureFolderExists(payload.path);
+          if (payload.is_binary) {
+            await this.app.vault.createBinary(payload.path, this.base64ToArrayBuffer(payload.content));
+          } else {
+            await this.app.vault.create(payload.path, payload.content);
+          }
+        } catch (err) {
+          this.showError("Failed to create file from remote change:", err);
+        }
+      }
+    };
+
+    this.wsClient.onFolderCreated = async (payload) => {
+      if (payload.path.startsWith(this.app.vault.configDir + '/')) {
+        if (!this.settings.syncObsidianFolder) return;
+        this.remoteChangeLocks.set(payload.path, Date.now() + 800);
+        await this.ensureAdapterFolderExists(payload.path + '/dummy');
+        return;
+      }
+
+      const folder = this.app.vault.getAbstractFileByPath(payload.path);
+      if (!folder) {
+        this.remoteChangeLocks.set(payload.path, Date.now() + 800);
+        await this.ensureFolderExists(payload.path);
+      }
+    };
+
+    this.wsClient.onFileDeleted = async (payload) => {
+      if (payload.path.startsWith(this.app.vault.configDir + '/')) {
+        if (!this.settings.syncObsidianFolder) return;
+        try {
+          const exists = await this.app.vault.adapter.exists(payload.path);
+          if (exists) await this.app.vault.adapter.remove(payload.path);
+        } catch (err) {
+          this.showError("Failed to process remote .obsidian delete:", err);
+        }
+        return;
+      }
+
+      const file = this.app.vault.getAbstractFileByPath(payload.path);
+      if (file) {
+        try {
+          await this.app.vault.trash(file, false); // move to system trash
+        } catch (err) {
+          this.showError("Failed to process remote delete:", err);
+        }
+      }
+    };
+
+    this.wsClient.onFileRenamed = async (payload) => {
+      if (payload.old_path.startsWith(this.app.vault.configDir + '/')) {
+        if (!this.settings.syncObsidianFolder) return;
+        try {
+          const exists = await this.app.vault.adapter.exists(payload.old_path);
+          if (exists) {
+            await this.ensureAdapterFolderExists(payload.new_path);
+            await this.app.vault.adapter.rename(payload.old_path, payload.new_path);
+          }
+        } catch (err) {
+          this.showError("Failed to process remote .obsidian rename:", err);
+        }
+        return;
+      }
+
+      const file = this.app.vault.getAbstractFileByPath(payload.old_path);
+      if (file) {
+        try {
+          await this.ensureFolderExists(payload.new_path);
+          await this.app.vault.rename(file, payload.new_path);
+        } catch (err) {
+          this.showError("Failed to process remote rename:", err);
+        }
+      }
+    };
+
+    this.wsClient.onStateChange = (state: WsState) => {
+      this.updateStatusBar(state);
+    };
+
+    this.wsClient.onConnected = (clientId: string) => {
+      console.log(`[ObsidianApiSync] Connected. Client ID: ${clientId}`);
+      this.pullAllFiles();
+    };
+
+    this.wsClient.onError = (payload) => {
+      new Notice(`⚠️ ObsidianApiSync error [${payload.code}]: ${payload.message}`);
+    };
+
+    // ── Settings Tab ──────────────────────────────────────────────────────────
+    this.addSettingTab(new ObsidianApiSyncSettingTab(this.app, this));
+
+    // ── Status Bar ────────────────────────────────────────────────────────────
+    this.statusBarItem = this.addStatusBarItem();
+    this.updateStatusBar(WsState.DISCONNECTED);
+
+    // ── Auto-connect on startup ───────────────────────────────────────────────
+    if (this.settings.serverUrl && this.settings.apiToken) {
+      this.connectWs();
+    }
+
+    // ── Commands ──────────────────────────────────────────────────────────────
+    this.addCommand({
+      id: 'ObsidianApiSync-pull-all',
+      name: 'Pull all files from server',
+      callback: () => this.pullAllFiles(),
+    });
 
     this.addCommand({
       id: 'ObsidianApiSync-restore-deleted',
