@@ -4,8 +4,9 @@
  */
 export function fnv1a(str: string): string {
   let hash = 0x811c9dc5;
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
+  const bytes = new TextEncoder().encode(str);
+  for (let i = 0; i < bytes.length; i++) {
+    hash ^= bytes[i];
     hash = (hash * 0x01000193) >>> 0; // keep 32-bit unsigned
   }
   return hash.toString(16).padStart(8, '0');
