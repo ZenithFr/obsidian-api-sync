@@ -1,7 +1,8 @@
-import { Plugin, TFile, TAbstractFile, Notice, requestUrl } from 'obsidian';
+import { Plugin, TFile, TAbstractFile, Notice, TFolder, requestUrl } from 'obsidian';
 import { ObsidianApiSyncSettings, DEFAULT_SETTINGS } from './types';
 import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
 import { ObsidianApiSyncSettingTab } from './settings';
+import { TrashRecoveryModal, VersionHistoryModal } from './modals';
 import { encryptText, decryptText, encryptBinary, decryptBinary, arrayBufferToBase64, base64ToArrayBuffer, isEncryptedText, isEncryptedBinary } from './encryption';
 
 export default class ObsidianApiSyncPlugin extends Plugin {
@@ -181,24 +182,6 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     this.wsClient = createWsClient();
     this.wsClient.setAutoReconnect(this.settings.autoReconnect);
     
-    // Load persisted hashes
-    if (this.settings.fileHashes) {
-      for (const [p, h] of Object.entries(this.settings.fileHashes)) {
-        this.wsClient.contentHashCache.set(p, h);
-      }
-    }
-    
-    // Save hashes lazily
-    let saveHashTimer = null;
-    this.wsClient.onHashUpdate = (p, h) => {
-      if (!this.settings.fileHashes) this.settings.fileHashes = {};
-      this.settings.fileHashes[p] = h;
-      if (saveHashTimer) clearTimeout(saveHashTimer);
-      saveHashTimer = setTimeout(() => {
-        this.saveSettings();
-      }, 5000);
-    };
-
     // ── WS Callbacks ──────────────────────────────────────────────────────────
 
 
@@ -534,7 +517,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               created++;
             }
           } catch(e) {
-            this.showError("Failed to sync config file:", path, e);
+            this.showError(`Failed to sync config file: ${path}`, e);
           }
           continue;
         }

@@ -8,8 +8,10 @@ import {
   ConnectedPayload,
   ErrorPayload,
   InboundPayload,
-  OutboundPayload,
+  FolderCreatedPayload,
+  FolderCreatePayload,
   VaultRestoredPayload,
+  OutboundPayload,
 } from './types';
 
 export enum WsState {
@@ -47,6 +49,7 @@ export class ObsidianApiSyncWsClient {
 
   /** Last-known hash per file path, used for conflict detection. */
   public getKnownHash(path: string): string {
+    return "";
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
