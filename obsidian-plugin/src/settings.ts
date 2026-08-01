@@ -251,7 +251,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
       .setDesc('Delay before sending changes. Lower values feel more instant but use more bandwidth. Recommended: 150–800ms.')
       .addSlider(slider =>
         slider
-          .setLimits(50, 2000, 50)
+          .setLimits(50, 10000, 50)
           .setValue(this.plugin.settings.syncDebounceMs)
           .setDynamicTooltip()
           .onChange(async value => {
