@@ -19,6 +19,8 @@ interface ObsidianApiSyncPluginLike {
     syncMode: 'include_all' | 'include_selected' | 'exclude_selected';
     selectiveSyncPaths: string;
     allowedExtensions: string;
+    encryptionPassword?: string;
+    fileHashes: Record<string, string>;
   };
   wsClient: {
     getState(): WsState;
