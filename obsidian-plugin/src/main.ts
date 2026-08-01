@@ -715,7 +715,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           new Notice(`ObsidianApiSync: Downloading large file ${path}...`);
           try {
             const dlResp = await requestUrl({
-              url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/download/${encodeURI(path)}`,
+              url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/download/${path.split('/').map(encodeURIComponent).join('/')}`,
               headers: { Authorization: `Bearer ${this.settings.apiToken}` }
             });
             remoteContent = this.arrayBufferToBase64(dlResp.arrayBuffer);
