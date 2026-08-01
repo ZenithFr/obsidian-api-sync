@@ -353,6 +353,8 @@
     <button onclick="switchTab('tokens')"  id="tab-tokens"  class="tab-btn">Tokens</button>
     <button onclick="switchTab('connect')" id="tab-connect" class="tab-btn">Connect</button>
     <button onclick="switchTab('audit')"   id="tab-audit"   class="tab-btn">Audit Log</button>
+    <button onclick="switchTab('history')" id="tab-history" class="tab-btn">History</button>
+    <button onclick="switchTab('trash')"   id="tab-trash"   class="tab-btn">Trash</button>
     <!-- Animated sliding indicator -->
     <div id="tab-indicator" class="absolute bottom-0 h-[2px] rounded-full bg-primary"></div>
   </div>
@@ -601,6 +603,52 @@
     </div>
   </div>
 
+  <!-- ════════════════ TAB: HISTORY ════════════════ -->
+  <div id="panel-history" class="tab-panel hidden stagger">
+    <div class="card">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-on-surface">File Version History</h2>
+          <p class="text-sm text-muted mt-1">Browse past versions of your synced files.</p>
+        </div>
+        <input id="history-search" type="text" placeholder="Search by filename…" class="input w-64" />
+      </div>
+      <div id="history-file-list" class="space-y-1">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Version detail panel -->
+    <div id="history-detail" class="card mt-4 hidden">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="history-detail-title" class="font-semibold text-primary"></h3>
+        <button onclick="closeHistoryDetail()" class="btn-link text-muted">✕ Close</button>
+      </div>
+      <table class="data-table w-full">
+        <thead><tr><th>Date</th><th>Size</th><th>Action</th></tr></thead>
+        <tbody id="history-versions-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════════════════ TAB: TRASH ════════════════ -->
+  <div id="panel-trash" class="tab-panel hidden stagger">
+    <div class="card">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="text-xl font-semibold text-on-surface">Deleted Files</h2>
+          <p class="text-sm text-muted mt-1">Files deleted from sync are kept here for 30 days.</p>
+        </div>
+        <button onclick="loadTrash()" class="btn-link">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Refresh
+        </button>
+      </div>
+      <div id="trash-list-content">
+        <p class="text-muted text-sm">Click Refresh to load.</p>
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- ── Toast Container ──────────────────────────────────────────── -->
@@ -614,15 +662,34 @@
      ═══════════════════════════════════════════════════════════════ -->
 <script>
 // CSRF token injected from server session (double-submit pattern)
-const CSRF_TOKEN = {{ csrf_token | tojson if csrf_token is defined else '""' }};
+const CSRF_TOKEN = "{{ csrf_token if csrf_token is defined else '' }}";
 
 // Remove legacy theme keys
 localStorage.removeItem('obsidian-sync-theme');
 localStorage.removeItem('hermes-theme');
 
+/* ── API Fetch ────────────────────────────────────────────────── */
+async function apiFetch(url, options = {}) {
+  const token = localStorage.getItem('token');
+  const headers = { ...options.headers };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (!token && options.method && !['GET', 'HEAD', 'OPTIONS'].includes(options.method.toUpperCase())) {
+    headers['X-CSRF-Token'] = CSRF_TOKEN;
+  }
+  return fetch(url, { ...options, headers });
+}
+
 /* ── Toast ────────────────────────────────────────────────────── */
 
 function showToast(message, type = 'info') {
+  if (typeof message !== 'string') {
+    if (Array.isArray(message)) message = message.map(e => e.msg || e).join(', ');
+    else if (message && message.detail) message = Array.isArray(message.detail) ? message.detail.map(e => e.msg).join(', ') : String(message.detail);
+    else if (message && message.message) message = message.message;
+    else message = JSON.stringify(message);
+  }
   const container = document.getElementById('toast-container');
   if (!container) return;
 
@@ -654,7 +721,7 @@ function showToast(message, type = 'info') {
 
 /* ── Tabs ─────────────────────────────────────────────────────── */
 
-const TAB_IDS = ['vault', 'tokens', 'connect', 'audit'];
+const TAB_IDS = ['vault', 'tokens', 'connect', 'audit', 'history', 'trash'];
 
 function updateTabIndicator(name) {
   const tab = document.getElementById(`tab-${name}`);
@@ -689,6 +756,8 @@ function switchTab(name) {
   updateTabIndicator(name);
   if (name === 'audit') loadAuditLog();
   if (name === 'tokens') loadTokens();
+  if (name === 'history') loadHistory();
+  if (name === 'trash') loadTrash();
 }
 
 
@@ -751,7 +820,7 @@ async function loadVaultStats() {
       <div class="mt-5 pt-5 border-t border-border/30">
         <h3 class="text-sm font-semibold text-on-surface mb-3">Sample Files</h3>
         <div class="flex flex-wrap gap-1.5">
-          ${data.files.slice(0, 15).map(f => `<span class="bg-background border border-border/40 text-muted text-xs font-mono px-2 py-1 rounded">${escapeHtml(f)}</span>`).join('')}
+          ${(data.files || []).slice(0, 15).map(f => `<span class="bg-background border border-border/40 text-muted text-xs font-mono px-2 py-1 rounded">${escapeHtml(f)}</span>`).join('')}
         </div>
       </div>` : ''}
     `;
@@ -820,7 +889,8 @@ async function generateToken() {
 async function revokeToken(id) {
   if (!confirm(`Are you sure you want to revoke Token #${id}? Any clients using it will instantly lose access.`)) return;
   try {
-    await fetch(`/dashboard/tokens/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/dashboard/tokens/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to revoke token');
     document.querySelector(`tr[data-token-id="${id}"]`)?.remove();
     showToast('Token revoked successfully.');
     await loadTokens();
@@ -851,7 +921,7 @@ function updateConnectConfig() {
   const token = sel.value || man.value.trim();
   if (!token) { out.value = ''; return; }
   const config = { server: window.location.origin, token };
-  out.value = btoa(JSON.stringify(config));
+  try { out.value = btoa(unescape(encodeURIComponent(JSON.stringify(config)))); } catch(e) { out.value = 'Invalid characters in token'; }
 }
 
 function copyConnectConfig() {
@@ -957,6 +1027,160 @@ document.addEventListener('DOMContentLoaded', () => {
   startAuditRefresh();
 });
 {% endif %}
+/* ── History ──────────────────────────────────────────────────────── */
+
+async function loadHistory() {
+  const container = document.getElementById('history-file-list');
+  container.innerHTML = '<p class="text-muted text-sm py-4 text-center">Loading…</p>';
+
+  let resp, data;
+  try {
+    resp = await apiFetch('/api/files');
+    data = await resp.json();
+  } catch(e) {
+    container.innerHTML = '<p class="text-error text-sm py-4 text-center">Failed to load file list.</p>';
+    return;
+  }
+
+  // /api/files returns plain strings when include_content=false (the default)
+  const files = (data.files || []).filter(f => typeof f === 'string');
+  container.innerHTML = '';
+
+  if (files.length === 0) {
+    container.innerHTML = '<p class="text-muted text-sm py-4 text-center">No files in vault.</p>';
+    return;
+  }
+
+  for (const filePath of files) {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between py-2 px-3 rounded-md hover:bg-surface/50 cursor-pointer';
+    const safeDisplay = escapeHtml(filePath);
+    row.innerHTML = `
+      <span class="text-sm font-mono text-muted">${safeDisplay}</span>
+      <button class="btn-secondary text-xs !h-8 !px-3">Versions</button>
+    `;
+    row.querySelector('button').addEventListener('click', () => loadFileVersions(filePath));
+    container.appendChild(row);
+  }
+}
+
+async function loadFileVersions(path) {
+  const encoded = path.split('/').map(encodeURIComponent).join('/');
+  const resp = await apiFetch(`/api/history/versions/${encoded}`);
+  const data = await resp.json();
+  const versions = data.versions || [];
+  
+  document.getElementById('history-detail-title').textContent = path;
+  const tbody = document.getElementById('history-versions-body');
+  tbody.innerHTML = '';
+  
+  if (versions.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-4">No versions found</td></tr>';
+  } else {
+    for (const v of versions) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${new Date(v.ts).toLocaleString()}</td>
+        <td>${(v.size / 1024).toFixed(1)} KB</td>
+        <td><button class="btn-link text-xs">Restore</button></td>
+      `;
+      tr.querySelector('button').addEventListener('click', () => restoreVersion(path, v.ts));
+      tbody.appendChild(tr);
+    }
+  }
+  document.getElementById('history-detail').classList.remove('hidden');
+}
+
+function closeHistoryDetail() {
+  document.getElementById('history-detail').classList.add('hidden');
+}
+
+async function restoreVersion(path, ts) {
+  if (!confirm(`Restore version from ${new Date(ts).toLocaleString()}? The current file will be moved to trash first.`)) return;
+  const encoded = path.split('/').map(encodeURIComponent).join('/');
+  try {
+    const resp = await apiFetch(`/api/history/restore-version/${encoded}?ts=${ts}`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showToast(err.detail || 'Restore failed.', 'error');
+      return;
+    }
+    showToast('Version restored successfully');
+    loadFileVersions(path);
+  } catch (e) {
+    showToast('Restore failed.', 'error');
+  }
+}
+
+document.getElementById('history-search')?.addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#history-file-list > div').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+
+
+/* ── Trash ────────────────────────────────────────────────────────── */
+
+async function loadTrash() {
+  const container = document.getElementById('trash-list-content');
+  container.innerHTML = '<p class="text-muted text-sm py-4 text-center">Loading…</p>';
+
+  let resp, data;
+  try {
+    resp = await apiFetch('/api/history/trash');
+    data = await resp.json();
+  } catch(e) {
+    container.innerHTML = '<p class="text-error text-sm py-4 text-center">Failed to load trash.</p>';
+    return;
+  }
+
+  const items = data.trash || [];
+  if (items.length === 0) {
+    container.innerHTML = '<p class="text-muted text-sm py-4 text-center">The trash is empty.</p>';
+    return;
+  }
+
+  const table = document.createElement('table');
+  table.className = 'data-table w-full';
+  table.innerHTML = `
+    <thead><tr>
+      <th>Original Path</th><th>Deleted</th><th>Size</th><th>Actions</th>
+    </tr></thead>
+    <tbody></tbody>`;
+
+  const tbody = table.querySelector('tbody');
+  for (const f of items) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="font-mono text-xs">${escapeHtml(f.original_path)}</td>
+      <td>${new Date(f.ts).toLocaleString()}</td>
+      <td>${(f.size / 1024).toFixed(1)} KB</td>
+      <td><button class="btn-link text-xs">Restore</button></td>`;
+    tr.querySelector('button').addEventListener('click', () => restoreTrash(f.trash_path, f.original_path));
+    tbody.appendChild(tr);
+  }
+
+  container.innerHTML = '';
+  container.appendChild(table);
+}
+
+async function restoreTrash(trashPath, originalPath) {
+  const params = new URLSearchParams({ trash_path: trashPath, original_path: originalPath });
+  try {
+    const resp = await apiFetch(`/api/history/restore-trash?${params}`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      showToast(err.detail || 'Restore failed.', 'error');
+      return;
+    }
+    showToast(`✅ Restored: ${originalPath}`);
+    loadTrash();
+  } catch(e) {
+    showToast('Restore failed.', 'error');
+  }
+}
+
 </script>
 </body>
 </html>

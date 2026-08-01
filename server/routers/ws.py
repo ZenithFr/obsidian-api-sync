@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import shutil
+import base64
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -24,8 +25,22 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from auth import verify_ws_token
 from config import settings
 from database import add_audit, get_vault_path
+import os
+from uuid import uuid4
+
+from version_control import save_version, move_to_trash, _get_versions_dir
+from locks import file_locks
 
 logger = logging.getLogger(__name__)
+
+def _fnv1a(content: str) -> str:
+    """FNV-1a 32-bit hash — matches the TypeScript client implementation exactly.
+    Used for conflict detection only; not a security primitive."""
+    h = 0x811c9dc5
+    for ch in content.encode("utf-8", errors="replace"):
+        h ^= ch
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return format(h, '08x')
 
 router = APIRouter()
 
@@ -51,6 +66,14 @@ def _sanitize_path(vault_path: str, relative_path: str) -> Path:
 
     if not str(target).startswith(str(vault_root) + "/") and str(target) != str(vault_root):
         raise ValueError(f"Path traversal detected: '{relative_path}' escapes the vault root.")
+
+    try:
+        rel_parts = target.relative_to(vault_root).parts
+        if rel_parts and rel_parts[0] in (".sync_versions", ".sync_trash"):
+            raise ValueError("Access to internal sync folders is forbidden.")
+    except ValueError:
+        pass
+
     return target
 
 
@@ -188,27 +211,76 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                 # -- FILE_MODIFY --------------------------------------------------
                 if msg_type == "FILE_MODIFY":
                     content: str | None = payload.get("content")
+                    is_binary: bool = payload.get("is_binary", False)
+                    base_hash: str = payload.get("base_hash", "")
                     if content is None:
                         await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "FILE_MODIFY requires 'content'."})
                         continue
 
-                    target_file.parent.mkdir(parents=True, exist_ok=True)
-                    target_file.write_text(content, encoding="utf-8")
+                    lock = await file_locks.acquire(str(target_file))
+                    async with lock:
+                        # Conflict detection: if client sent a base_hash, check it
+                        # against the current server file. Mismatch = concurrent edit.
+                        if base_hash and not is_binary and target_file.exists():
+                            try:
+                                current_text = await asyncio.to_thread(target_file.read_text, encoding="utf-8", errors="replace")
+                                current_hash = _fnv1a(current_text)
+                                if current_hash != base_hash:
+                                    # Send conflict back to the originating client only
+                                    await websocket.send_json({
+                                        "type": "CONFLICT",
+                                        "path": file_path,
+                                        "server_content": current_text,
+                                        "client_content": content,
+                                    })
+                                    continue  # Do NOT write to disk
+                            except OSError:
+                                pass  # If we can't read the file, just let the write proceed
+        
+                        if target_file.exists():
+                            await asyncio.to_thread(save_version, Path(vault_path), file_path)
+        
+                        target_file.parent.mkdir(parents=True, exist_ok=True)
+                        
+                        if is_binary:
+                            try:
+                                raw_bytes = base64.b64decode(content)
+                                def _atomic_write_bin():
+                                    tmp = target_file.with_name(f"{target_file.name}.{uuid4().hex}.tmp")
+                                    tmp.write_bytes(raw_bytes)
+                                    os.replace(tmp, target_file)
+                                await asyncio.to_thread(_atomic_write_bin)
+                            except IsADirectoryError:
+                                await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Target path is a directory."})
+                                continue
+                            except Exception as e:
+                                await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": f"Failed to decode base64: {e}"})
+                                continue
+                        else:
+                            try:
+                                def _atomic_write_txt():
+                                    tmp = target_file.with_name(f"{target_file.name}.{uuid4().hex}.tmp")
+                                    tmp.write_text(content, encoding="utf-8")
+                                    os.replace(tmp, target_file)
+                                await asyncio.to_thread(_atomic_write_txt)
+                            except IsADirectoryError:
+                                await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Target path is a directory."})
+                                continue
+                        
                     ts = _utcnow_iso()
                     # Broadcast to all OTHER clients (exclude sender to prevent echo)
                     await manager.broadcast(
-                        {"type": "FILE_CHANGED", "path": file_path, "content": content, "source": "ws", "ts": ts},
+                        {"type": "FILE_CHANGED", "path": file_path, "content": content, "is_binary": is_binary, "source": "ws", "ts": ts},
                         exclude=websocket,
                     )
                     await add_audit(method="WS", path=file_path, token_id=token_data["id"], action="WRITE")
 
                 # -- FILE_DELETE --------------------------------------------------
                 elif msg_type == "FILE_DELETE":
-                    if target_file.exists():
-                        if target_file.is_file():
-                            target_file.unlink()
-                        elif target_file.is_dir():
-                            shutil.rmtree(target_file)
+                    lock = await file_locks.acquire(str(target_file))
+                    async with lock:
+                        if target_file.exists():
+                            await asyncio.to_thread(move_to_trash, Path(vault_path), file_path)
 
                     ts = _utcnow_iso()
                     await manager.broadcast(
@@ -230,9 +302,25 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                         await websocket.send_json({"type": "ERROR", "code": "PATH_TRAVERSAL", "message": str(exc)})
                         continue
 
-                    if target_file.exists():
-                        target_new.parent.mkdir(parents=True, exist_ok=True)
-                        target_file.rename(target_new)
+                    lock_old = await file_locks.acquire(str(target_file))
+                    lock_new = await file_locks.acquire(str(target_new))
+                    locks = [lock_old, lock_new] if str(target_file) < str(target_new) else [lock_new, lock_old]
+                    async with locks[0]:
+                        async with locks[1]:
+                            if target_file.exists():
+                                await asyncio.to_thread(save_version, Path(vault_path), file_path)
+                                target_new.parent.mkdir(parents=True, exist_ok=True)
+                                try:
+                                    await asyncio.to_thread(target_file.rename, target_new)
+                                except IsADirectoryError:
+                                    await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Target path is a directory."})
+                                    continue
+                                
+                                old_versions_dir = _get_versions_dir(Path(vault_path)) / file_path
+                                if old_versions_dir.exists():
+                                    new_versions_dir = _get_versions_dir(Path(vault_path)) / new_path
+                                    new_versions_dir.parent.mkdir(parents=True, exist_ok=True)
+                                    await asyncio.to_thread(old_versions_dir.rename, new_versions_dir)
 
                     ts = _utcnow_iso()
                     await manager.broadcast(
@@ -241,6 +329,82 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     )
                     await add_audit(method="WS", path=f"{file_path} -> {new_path}", token_id=token_data["id"], action="RENAME")
 
+                # -- FOLDER_CREATE ------------------------------------------------
+                elif msg_type == "FOLDER_CREATE":
+                    lock = await file_locks.acquire(str(target_file))
+                    async with lock:
+                        if target_file.exists():
+                            await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Path already exists."})
+                            continue
+                        try:
+                            await asyncio.to_thread(target_file.mkdir, parents=True, exist_ok=True)
+                        except FileExistsError:
+                            await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "A file already exists at this path."})
+                            continue
+                    ts = _utcnow_iso()
+                    await manager.broadcast(
+                        {"type": "FOLDER_CREATED", "path": file_path, "source": "ws", "ts": ts},
+                        exclude=websocket,
+                    )
+                    await add_audit(method="WS", path=file_path, token_id=token_data["id"], action="CREATE_DIR")
+            except Exception as e:
+                logger.error(f"File operation failed in WS: {e}")
+                await websocket.send_json({"type": "ERROR", "code": "FS_ERROR", "message": str(e)})
+
+                    ts = _utcnow_iso()
+                    await manager.broadcast(
+                        {"type": "FILE_DELETED", "path": file_path, "source": "ws", "ts": ts},
+                        exclude=websocket,
+                    )
+                    await add_audit(method="WS", path=file_path, token_id=token_data["id"], action="DELETE")
+
+                # -- FILE_RENAME --------------------------------------------------
+                elif msg_type == "FILE_RENAME":
+                    new_path: str | None = payload.get("new_path")
+                    if not new_path:
+                        await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "FILE_RENAME requires 'new_path'."})
+                        continue
+
+                    try:
+                        target_new = _sanitize_path(vault_path, new_path)
+                    except ValueError as exc:
+                        await websocket.send_json({"type": "ERROR", "code": "PATH_TRAVERSAL", "message": str(exc)})
+                        continue
+
+<<<<<<< HEAD
+                    if target_file.exists():
+                        target_new.parent.mkdir(parents=True, exist_ok=True)
+                        target_file.rename(target_new)
+=======
+                lock_old = await file_locks.acquire(str(target_file))
+                lock_new = await file_locks.acquire(str(target_new))
+                locks = [lock_old, lock_new] if str(target_file) < str(target_new) else [lock_new, lock_old]
+                async with locks[0]:
+                    async with locks[1]:
+                        if target_file.exists():
+                            await asyncio.to_thread(save_version, Path(vault_path), file_path)
+                            target_new.parent.mkdir(parents=True, exist_ok=True)
+                            try:
+                                await asyncio.to_thread(target_file.rename, target_new)
+                            except IsADirectoryError:
+                                await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Target path is a directory."})
+                                continue
+                            
+                            old_versions_dir = _get_versions_dir(Path(vault_path)) / file_path
+                            if old_versions_dir.exists():
+                                new_versions_dir = _get_versions_dir(Path(vault_path)) / new_path
+                                new_versions_dir.parent.mkdir(parents=True, exist_ok=True)
+                                await asyncio.to_thread(old_versions_dir.rename, new_versions_dir)
+>>>>>>> feature-snapshots
+
+                    ts = _utcnow_iso()
+                    await manager.broadcast(
+                        {"type": "FILE_RENAMED", "old_path": file_path, "new_path": new_path, "source": "ws", "ts": ts},
+                        exclude=websocket,
+                    )
+                    await add_audit(method="WS", path=f"{file_path} -> {new_path}", token_id=token_data["id"], action="RENAME")
+
+<<<<<<< HEAD
                 # -- FOLDER_CREATE ------------------------------------------------
                 elif msg_type == "FOLDER_CREATE":
                     target_file.mkdir(parents=True, exist_ok=True)
@@ -253,6 +417,26 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
             except Exception as e:
                 logger.error(f"File operation failed in WS: {e}")
                 await websocket.send_json({"type": "ERROR", "code": "FS_ERROR", "message": str(e)})
+=======
+            # -- FOLDER_CREATE ------------------------------------------------
+            elif msg_type == "FOLDER_CREATE":
+                lock = await file_locks.acquire(str(target_file))
+                async with lock:
+                    if target_file.exists():
+                        await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Path already exists."})
+                        continue
+                    try:
+                        await asyncio.to_thread(target_file.mkdir, parents=True, exist_ok=True)
+                    except FileExistsError:
+                        await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "A file already exists at this path."})
+                        continue
+                ts = _utcnow_iso()
+                await manager.broadcast(
+                    {"type": "FOLDER_CREATED", "path": file_path, "source": "ws", "ts": ts},
+                    exclude=websocket,
+                )
+                await add_audit(method="WS", path=file_path, token_id=token_data["id"], action="CREATE_DIR")
+>>>>>>> feature-snapshots
 
     except WebSocketDisconnect:
         pass  # Normal client disconnect

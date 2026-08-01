@@ -23,6 +23,10 @@
 - **OpenAPI schema** — `/openapi.json` with AI-agent-readable descriptions, ready to ingest as an MCP tool
 - **Web Dashboard** — dark-mode Tailwind UI for vault path, token management, config export, and live audit log
 - **Obsidian Plugin** — TypeScript plugin with WS state machine, 800ms debounced sends, exponential backoff reconnect, echo-loop prevention, and Quick Import config
+- **Selective Sync** — Choose which folders and file extensions to sync, or exclude specific paths entirely.
+- **Attachment Support** — Full binary syncing support for images, PDFs, audio, and video files over WebSocket (Base64) and REST.
+- **Historical Versioning** — Automatically retains up to 20 historical versions for 30 days per file. Restore directly from Obsidian!
+- **Deleted File Recovery** — Server-side `.sync_trash` intercepts deletions, letting you safely recover accidentally deleted items from the Obsidian plugin.
 - **No vault path restart** — change the vault directory from the Dashboard; it takes effect instantly (stored in SQLite, never cached)
 
 ## Project Structure
@@ -149,9 +153,13 @@ All `/api/` endpoints require `Authorization: Bearer <token>`.
 |--------|-------|-------------|
 | `GET` | `/api/files` | List all `.md` files in vault |
 | `GET` | `/api/files/{path}` | Read file content |
-| `POST` | `/api/files/{path}` | Create or overwrite file (`text/plain` body) |
-| `DELETE` | `/api/files/{path}` | Delete file |
+| `POST` | `/api/files/{path}` | Create or overwrite file (`application/octet-stream` or `text/plain` body) |
+| `DELETE` | `/api/files/{path}` | Delete file (moves to server trash) |
 | `WS` | `/ws/sync?token=<t>` | Real-time bidirectional sync |
+| `GET` | `/api/history/versions/{path}` | List historical versions for a file |
+| `POST` | `/api/history/restore-version/{path}?ts={ts}` | Restore a specific historical version |
+| `GET` | `/api/history/trash` | List deleted files in the server trash |
+| `POST` | `/api/history/restore-trash?trash_path={..}&original_path={..}` | Restore a trashed file |
 | `GET` | `/openapi.json` | OpenAPI schema (MCP-ready) |
 | `GET` | `/dashboard` | Web control panel |
 

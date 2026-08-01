@@ -2,6 +2,8 @@ import { Plugin, TFile, TAbstractFile, Notice, requestUrl } from 'obsidian';
 import { ObsidianApiSyncSettings, DEFAULT_SETTINGS } from './types';
 import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
 import { ObsidianApiSyncSettingTab } from './settings';
+import { TrashRecoveryModal, VersionHistoryModal, ConflictResolutionModal } from './modals';
+import { encryptText, decryptText, encryptBinary, decryptBinary, arrayBufferToBase64, base64ToArrayBuffer, isEncryptedText, isEncryptedBinary } from './encryption';
 
 export default class ObsidianApiSyncPlugin extends Plugin {
   settings!: ObsidianApiSyncSettings;
@@ -9,6 +11,164 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   private statusBarItem!: HTMLElement;
   private modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private remoteChangeLocks: Map<string, number> = new Map();
+  private modifyVersions: Map<string, number> = new Map();
+  private localModificationTimes: Map<string, number> = new Map();
+
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+
+  shouldSyncPath(path: string, isFolder: boolean = false): boolean {
+    if (path.startsWith(this.app.vault.configDir + '/')) {
+      return true; // Config dir is handled separately via syncObsidianFolder
+    }
+
+    if (!isFolder) {
+      const extMatch = path.match(/\.([^.]+)$/);
+      if (extMatch) {
+        const ext = extMatch[1].toLowerCase();
+        const allowed = this.settings.allowedExtensions.split(',').map(s => s.trim().toLowerCase());
+        if (!allowed.includes(ext)) return false;
+      } else {
+        return false;
+      }
+    }
+
+    const mode = this.settings.syncMode;
+    if (mode === 'include_all') return true;
+
+    const paths = this.settings.selectiveSyncPaths.split('\n').map(s => s.trim()).filter(s => s);
+    let matches = false;
+    for (let p of paths) {
+      if (p.endsWith('/')) {
+        p = p.slice(0, -1);
+      }
+      if (path === p || path.startsWith(p + '/')) {
+        matches = true;
+        break;
+      }
+    }
+
+    if (mode === 'include_selected') return matches;
+    if (mode === 'exclude_selected') return !matches;
+    return true;
+  }
+
+  isBinaryFile(path: string): boolean {
+    const extMatch = path.match(/\.([^.]+)$/);
+    if (!extMatch) return false;
+    const ext = extMatch[1].toLowerCase();
+    // Common text formats in Obsidian
+    const textExts = ['md', 'canvas', 'txt', 'css', 'json', 'csv', 'js', 'ts'];
+    return !textExts.includes(ext);
+  }
+
+  arrayBufferToBase64(buffer: ArrayBuffer): string {
+    return arrayBufferToBase64(buffer);
+  }
+
+  base64ToArrayBuffer(base64: string): ArrayBuffer {
+    return base64ToArrayBuffer(base64);
+  }
+
+  async encryptPayloadIfNeeded(contentStr: string, isBinary: boolean): Promise<{ contentStr: string, isBinary: boolean }> {
+    if (!this.settings.encryptionPassword) return { contentStr, isBinary };
+    if (isBinary) {
+      const encryptedBuf = await encryptBinary(this.base64ToArrayBuffer(contentStr), this.settings.encryptionPassword);
+      return { contentStr: this.arrayBufferToBase64(encryptedBuf), isBinary: true };
+    } else {
+      const encryptedText = await encryptText(contentStr, this.settings.encryptionPassword);
+      return { contentStr: encryptedText, isBinary: false };
+    }
+  }
+
+  async uploadChunked(path: string, payloadStr: string, isBinary: boolean): Promise<void> {
+    if (!this.settings.serverUrl || !this.settings.apiToken) return;
+    const uploadId = (Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
+    
+    let base64Content = payloadStr;
+    if (!isBinary) {
+      base64Content = this.arrayBufferToBase64(new TextEncoder().encode(payloadStr));
+    }
+    
+    const chunkSize = 2 * 1024 * 1024; // 2MB
+    const totalChunks = Math.ceil(base64Content.length / chunkSize);
+
+    new Notice(`ObsidianApiSync: Uploading ${path} in ${totalChunks} chunks...`);
+
+    try {
+      for (let i = 0; i < totalChunks; i++) {
+        const chunk = base64Content.substring(i * chunkSize, (i + 1) * chunkSize);
+        await requestUrl({
+          url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/chunk`,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${this.settings.apiToken}`
+          },
+          body: JSON.stringify({
+            upload_id: uploadId,
+            chunk_index: i,
+            total_chunks: totalChunks,
+            data: chunk
+          })
+        });
+      }
+
+      await requestUrl({
+        url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/commit`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.settings.apiToken}`
+        },
+        body: JSON.stringify({
+          upload_id: uploadId,
+          path: path,
+          is_binary: isBinary,
+          total_chunks: totalChunks
+        })
+      });
+      new Notice(`ObsidianApiSync: Finished uploading ${path}`);
+    } catch (e) {
+      this.showError(`Failed to upload ${path} in chunks`, e);
+      try {
+        await requestUrl({
+          url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/chunk/${uploadId}`,
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${this.settings.apiToken}` }
+        });
+      } catch (cancelErr) {
+        console.error("Failed to cancel upload:", cancelErr);
+      }
+    }
+  }
+
+  async decryptInboundContent(path: string, remoteContent: string, isBinary: boolean): Promise<{ decryptedStr: string, decryptedIsBinary: boolean }> {
+    if (!this.settings.encryptionPassword) {
+      return { decryptedStr: remoteContent, decryptedIsBinary: isBinary };
+    }
+    if (isBinary) {
+      const remoteBuffer = this.base64ToArrayBuffer(remoteContent);
+      if (isEncryptedBinary(remoteBuffer)) {
+        try {
+          const decryptedBuffer = await decryptBinary(remoteBuffer, this.settings.encryptionPassword);
+          return { decryptedStr: this.arrayBufferToBase64(decryptedBuffer), decryptedIsBinary: true };
+        } catch (e) {
+          throw new Error(`Failed to decrypt binary file ${path}`);
+        }
+      }
+    } else {
+      if (isEncryptedText(remoteContent)) {
+        try {
+          const decryptedText = await decryptText(remoteContent, this.settings.encryptionPassword);
+          return { decryptedStr: decryptedText, decryptedIsBinary: false };
+        } catch (e) {
+          throw new Error(`Failed to decrypt text file ${path}`);
+        }
+      }
+    }
+    return { decryptedStr: remoteContent, decryptedIsBinary: isBinary };
+  }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -18,28 +178,71 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     // Create WebSocket client
     this.wsClient = createWsClient();
     this.wsClient.setAutoReconnect(this.settings.autoReconnect);
+    
+    // Load persisted hashes
+    if (this.settings.fileHashes) {
+      for (const [p, h] of Object.entries(this.settings.fileHashes)) {
+        this.wsClient.contentHashCache.set(p, h);
+      }
+    }
+    
+    // Save hashes lazily
+    let saveHashTimer = null;
+    this.wsClient.onHashUpdate = (p, h) => {
+      if (!this.settings.fileHashes) this.settings.fileHashes = {};
+      this.settings.fileHashes[p] = h;
+      if (saveHashTimer) clearTimeout(saveHashTimer);
+      saveHashTimer = setTimeout(() => {
+        this.saveSettings();
+      }, 5000);
+    };
 
     // ── WS Callbacks ──────────────────────────────────────────────────────────
 
-    this.wsClient.onFileChanged = async (payload) => {
-      const isBinary = payload.content === null;
-      let remoteContent: string | null = null;
-      let remoteBuffer: ArrayBuffer | null = null;
+    this.wsClient.onConflict = async (payload) => {
+      let sc = payload.server_content;
+      let cc = payload.client_content;
+      const is_binary = this.isBinaryFile(payload.path);
+
+      try {
+        const decS = await this.decryptInboundContent(payload.path, sc, is_binary);
+        sc = decS.decryptedStr;
+        const decC = await this.decryptInboundContent(payload.path, cc, is_binary);
+        cc = decC.decryptedStr;
+      } catch (e) {
+        console.error("Failed to decrypt conflict payload", e);
+      }
+
+      new ConflictResolutionModal(
+        this.app,
+        this,
+        payload.path,
+        sc,
+        cc
+      ).open();
+    };
+
+    this.wsClient.onVaultRestored = async (payload) => {
+      new Notice(`ObsidianApiSync: Server vault restored from snapshot ${payload.snapshot_id}! Re-syncing...`, 8000);
       
-      if (isBinary) {
-          const encodedPath = payload.path.split('/').map((segment) => encodeURIComponent(segment)).join('/');
-          try {
-              const res = await requestUrl({
-                  url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/${encodedPath}`,
-                  headers: { Authorization: `Bearer ${this.settings.apiToken}` }
-              });
-              remoteBuffer = res.arrayBuffer;
-          } catch (err) {
-              console.error('[ObsidianApiSync] Failed to fetch binary file:', err);
-              return;
-          }
-      } else {
-          remoteContent = payload.content;
+      // Reset caches
+      this.contentHashCache = {};
+      this.wsClient.contentHashCache.clear();
+      
+      // Pull all files after a brief delay to allow server to finish sending broadcasts
+      setTimeout(() => {
+        this.pullAllFiles();
+      }, 1000);
+    };
+
+    this.wsClient.onFileChanged = async (payload) => {
+      try {
+        const dec = await this.decryptInboundContent(payload.path, payload.content, !!payload.is_binary);
+        payload.content = dec.decryptedStr;
+        payload.is_binary = dec.decryptedIsBinary;
+      } catch (err) {
+        this.showError(`Failed to decrypt WebSocket change for ${payload.path}`, err);
+        return;
       }
 
       if (payload.path.startsWith(this.app.vault.configDir + '/')) {
@@ -50,47 +253,20 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         try {
           const exists = await this.app.vault.adapter.exists(payload.path);
           if (exists) {
-            let changed = false;
-            if (isBinary) {
-                const localBytes = await this.app.vault.adapter.readBinary(payload.path);
-                if (localBytes.byteLength !== remoteBuffer!.byteLength) {
-                    changed = true;
-                } else {
-                    const localArr = new Uint8Array(localBytes);
-                    const remoteArr = new Uint8Array(remoteBuffer!);
-                    for (let i = 0; i < localArr.length; i++) {
-                        if (localArr[i] !== remoteArr[i]) {
-                            changed = true;
-                            break;
-                        }
-                    }
-                }
-            } else {
-                const currentContent = await this.app.vault.adapter.read(payload.path);
-                const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
-                const normalizedRemote = remoteContent!.replace(/\r\n/g, '\n');
-                changed = normalizedLocal !== normalizedRemote;
-            }
-
-            if (changed) {
+            const currentContent = await this.app.vault.adapter.read(payload.path);
+            const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
+            const normalizedRemote = payload.content.replace(/\r\n/g, '\n');
+            if (normalizedLocal !== normalizedRemote) {
               if (this.modifyDebounceTimers.has(payload.path)) {
                 clearTimeout(this.modifyDebounceTimers.get(payload.path)!);
                 this.modifyDebounceTimers.delete(payload.path);
               }
               this.remoteChangeLocks.set(payload.path, Date.now() + 800);
-              if (isBinary) {
-                  await this.app.vault.adapter.writeBinary(payload.path, remoteBuffer!);
-              } else {
-                  await this.app.vault.adapter.write(payload.path, remoteContent!);
-              }
+              await this.app.vault.adapter.write(payload.path, payload.content);
             }
           } else {
             await this.ensureAdapterFolderExists(payload.path);
-            if (isBinary) {
-                await this.app.vault.adapter.writeBinary(payload.path, remoteBuffer!);
-            } else {
-                await this.app.vault.adapter.write(payload.path, remoteContent!);
-            }
+            await this.app.vault.adapter.write(payload.path, payload.content);
           }
         } catch (err) {
           this.showError("Failed to process remote .obsidian change:", err);
@@ -101,51 +277,42 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       const file = this.app.vault.getAbstractFileByPath(payload.path);
 
       if (file instanceof TFile) {
-        let changed = false;
-        if (isBinary) {
-            const localBytes = await this.app.vault.readBinary(file);
-            if (localBytes.byteLength !== remoteBuffer!.byteLength) {
-                changed = true;
-            } else {
-                const localArr = new Uint8Array(localBytes);
-                const remoteArr = new Uint8Array(remoteBuffer!);
-                for (let i = 0; i < localArr.length; i++) {
-                    if (localArr[i] !== remoteArr[i]) {
-                        changed = true;
-                        break;
-                    }
-                }
-            }
+        // Echo-loop prevention: only write if content actually differs
+        let normalizedLocal = '';
+        let normalizedRemote = '';
+        if (payload.is_binary) {
+          const currentBuffer = await this.app.vault.readBinary(file);
+          normalizedLocal = this.arrayBufferToBase64(currentBuffer);
+          normalizedRemote = payload.content;
         } else {
-            const currentContent = await this.app.vault.read(file);
-            const normalizedLocal = currentContent.replace(/\r\n/g, '\n');
-            const normalizedRemote = remoteContent!.replace(/\r\n/g, '\n');
-            changed = normalizedLocal !== normalizedRemote;
+          const currentContent = await this.app.vault.read(file);
+          normalizedLocal = currentContent.replace(/\r\n/g, '\n');
+          normalizedRemote = payload.content.replace(/\r\n/g, '\n');
         }
-
-        if (changed) {
+        if (normalizedLocal !== normalizedRemote) {
           if (this.modifyDebounceTimers.has(file.path)) {
             clearTimeout(this.modifyDebounceTimers.get(file.path)!);
             this.modifyDebounceTimers.delete(file.path);
           }
           this.remoteChangeLocks.set(file.path, Date.now() + 800);
           try {
-            if (isBinary) {
-                await this.app.vault.modifyBinary(file, remoteBuffer!);
+            if (payload.is_binary) {
+              await this.app.vault.modifyBinary(file, this.base64ToArrayBuffer(payload.content));
             } else {
-                await this.app.vault.modify(file, remoteContent!);
+              await this.app.vault.modify(file, payload.content);
             }
           } catch (err) {
             this.showError("modify failed", err);
           }
         }
       } else if (!file) {
+        // File doesn't exist locally yet — create it
         try {
           await this.ensureFolderExists(payload.path);
-          if (isBinary) {
-              await this.app.vault.createBinary(payload.path, remoteBuffer!);
+          if (payload.is_binary) {
+            await this.app.vault.createBinary(payload.path, this.base64ToArrayBuffer(payload.content));
           } else {
-              await this.app.vault.create(payload.path, remoteContent!);
+            await this.app.vault.create(payload.path, payload.content);
           }
         } catch (err) {
           this.showError("Failed to create file from remote change:", err);
@@ -173,14 +340,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         if (!this.settings.syncObsidianFolder) return;
         try {
           const exists = await this.app.vault.adapter.exists(payload.path);
-          if (exists) {
-            const stat = await this.app.vault.adapter.stat(payload.path);
-            if (stat && stat.type === 'folder') {
-              await this.app.vault.adapter.rmdir(payload.path, true);
-            } else {
-              await this.app.vault.adapter.remove(payload.path);
-            }
-          }
+          if (exists) await this.app.vault.adapter.remove(payload.path);
         } catch (err) {
           this.showError("Failed to process remote .obsidian delete:", err);
         }
@@ -255,6 +415,23 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       callback: () => this.pullAllFiles(),
     });
 
+    this.addCommand({
+      id: 'ObsidianApiSync-restore-deleted',
+      name: 'Restore deleted files (Server Trash)',
+      callback: () => {
+        new TrashRecoveryModal(this.app, this).open();
+      }
+    });
+
+    this.addCommand({
+      id: 'ObsidianApiSync-view-history',
+      name: 'View version history for current file',
+      callback: () => {
+        const file = this.app.workspace.getActiveFile();
+        new VersionHistoryModal(this.app, this, file ? file.path : null).open();
+      }
+    });
+
     // ── Editor & Vault Events ─────────────────────────────────────────────────
     
     // 0. Watch for raw filesystem changes (e.g., in .obsidian)
@@ -274,6 +451,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           clearTimeout(this.modifyDebounceTimers.get(path)!);
         }
 
+        const version = (this.modifyVersions.get(path) || 0) + 1;
+        this.modifyVersions.set(path, version);
+        this.localModificationTimes.set(path, Date.now());
+
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(path);
           try {
@@ -285,11 +466,26 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             } else {
               const stat = await this.app.vault.adapter.stat(path);
               if (stat && stat.type === 'file') {
-                const content = await this.app.vault.adapter.read(path);
-                if (this.wsClient.getState() === WsState.CONNECTED) {
-                  this.wsClient.sendFileModify(path, content);
+                const isBinary = this.isBinaryFile(path);
+                let contentStr = '';
+                if (isBinary) {
+                  const buffer = await this.app.vault.adapter.readBinary(path);
+                  contentStr = this.arrayBufferToBase64(buffer);
+                } else {
+                  contentStr = await this.app.vault.adapter.read(path);
+                }
+                if (contentStr.length > 133 * 1024 * 1024) {
+                  new Notice(`ObsidianApiSync: File ${path} is over 100MB limit. Skipping.`);
+                  return;
+                }
+                const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+                if (this.modifyVersions.get(path) !== version) return;
+                if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+                  await this.uploadChunked(path, encrypted.contentStr, encrypted.isBinary);
+                } else if (this.wsClient.getState() === WsState.CONNECTED) {
+                  this.wsClient.sendFileModify(path, encrypted.contentStr, encrypted.isBinary);
                 } else if (this.settings.serverUrl && this.settings.apiToken) {
-                  await this.httpFallbackWriteRaw(path, content);
+                  await this.httpFallbackWriteRaw(path, encrypted.contentStr, encrypted.isBinary);
                 }
               }
             }
@@ -309,6 +505,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
         const file = info?.file || this.app.workspace.getActiveFile();
         if (!(file instanceof TFile)) return;
+        if (!this.shouldSyncPath(file.path, false)) return;
 
         const lockExpiry = this.remoteChangeLocks.get(file.path);
         if (lockExpiry && Date.now() < lockExpiry) return;
@@ -317,13 +514,23 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           clearTimeout(this.modifyDebounceTimers.get(file.path)!);
         }
 
+        const currentContent = editor.getValue();
+        const version = (this.modifyVersions.get(file.path) || 0) + 1;
+        this.modifyVersions.set(file.path, version);
+        this.localModificationTimes.set(file.path, Date.now());
+
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
-          if (this.wsClient.getState() === WsState.CONNECTED) {
-            const content = editor.getValue();
-            this.wsClient.sendFileModify(file.path, content);
-          } else if (this.settings.serverUrl && this.settings.apiToken) {
-            await this.httpFallbackWrite(file);
+          if (currentContent.length > 133 * 1024 * 1024) {
+            new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
+            return;
+          }
+          const encrypted = await this.encryptPayloadIfNeeded(currentContent, false);
+          if (this.modifyVersions.get(file.path) !== version) return;
+          if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+            await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
+          } else {
+            this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
           }
         }, this.settings.syncDebounceMs || 150);
 
@@ -333,33 +540,42 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
     // 2. Fallback for non-editor modifications (e.g. other plugins or syncing)
     this.registerEvent(
-      this.app.vault.on('modify', async (file: TAbstractFile) => {
+      this.app.vault.on('modify', (file: TAbstractFile) => {
         if (!(file instanceof TFile)) return;
+        if (!this.shouldSyncPath(file.path, false)) return;
         if (!this.settings.syncOnModify) return;
         
         const lockExpiry = this.remoteChangeLocks.get(file.path);
         if (lockExpiry && Date.now() < lockExpiry) return; // ignore our own remote updates
 
-        // If a timer is already running, clear it to prevent race conditions
         if (this.modifyDebounceTimers.has(file.path)) {
-            clearTimeout(this.modifyDebounceTimers.get(file.path)!);
+          clearTimeout(this.modifyDebounceTimers.get(file.path)!);
         }
+
+        const version = (this.modifyVersions.get(file.path) || 0) + 1;
+        this.modifyVersions.set(file.path, version);
+        this.localModificationTimes.set(file.path, Date.now());
 
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
-          const isBinary = !['md', 'txt', 'csv', 'json', 'yaml', 'yml'].includes(file.extension.toLowerCase());
-          
+          const isBinary = this.isBinaryFile(file.path);
+          let contentStr = '';
           if (isBinary) {
-            if (this.settings.serverUrl && this.settings.apiToken) {
-              await this.httpFallbackWrite(file);
-            }
+            const buffer = await this.app.vault.readBinary(file);
+            contentStr = this.arrayBufferToBase64(buffer);
           } else {
-            if (this.wsClient.getState() === WsState.CONNECTED) {
-              const content = await this.app.vault.read(file);
-              this.wsClient.sendFileModify(file.path, content);
-            } else if (this.settings.serverUrl && this.settings.apiToken) {
-              await this.httpFallbackWrite(file);
-            }
+            contentStr = await this.app.vault.read(file);
+          }
+          if (contentStr.length > 133 * 1024 * 1024) {
+            new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
+            return;
+          }
+          const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+          if (this.modifyVersions.get(file.path) !== version) return;
+          if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+            await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
+          } else {
+            this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
           }
         }, this.settings.syncDebounceMs || 150);
 
@@ -371,23 +587,43 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on('create', (file: TAbstractFile) => {
         if (!this.settings.syncOnModify) return;
+        if (!this.shouldSyncPath(file.path, file instanceof TFolder)) return;
         
         const lockExpiry = this.remoteChangeLocks.get(file.path);
         if (lockExpiry && Date.now() < lockExpiry) return;
 
         if (file instanceof TFile) {
+          const version = (this.modifyVersions.get(file.path) || 0) + 1;
+          this.modifyVersions.set(file.path, version);
+          this.localModificationTimes.set(file.path, Date.now());
+
           // Give Obsidian a tiny tick to finish writing the file to disk
           setTimeout(async () => {
             if (this.wsClient.getState() === WsState.CONNECTED) {
-              const content = await this.app.vault.read(file);
-              this.wsClient.sendFileModify(file.path, content);
+              const isBinary = this.isBinaryFile(file.path);
+              let contentStr = '';
+              if (isBinary) {
+                const buffer = await this.app.vault.readBinary(file);
+                contentStr = this.arrayBufferToBase64(buffer);
+              } else {
+                contentStr = await this.app.vault.read(file);
+              }
+              if (contentStr.length > 133 * 1024 * 1024) {
+                new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
+                return;
+              }
+              const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
+              if (this.modifyVersions.get(file.path) !== version) return;
+              if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+                await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
+              } else {
+                this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+              }
             }
           }, 300);
         } else {
           // It's a folder
-          if (this.wsClient.getState() === WsState.CONNECTED) {
-            this.wsClient.sendFolderCreate(file.path);
-          }
+          this.wsClient.sendFolderCreate(file.path);
         }
       })
     );
@@ -395,18 +631,16 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     this.registerEvent(
       this.app.vault.on('delete', (file: TAbstractFile) => {
         if (!this.settings.syncOnModify) return;
-        if (this.wsClient.getState() === WsState.CONNECTED) {
-          this.wsClient.sendFileDelete(file.path);
-        }
+        if (!this.shouldSyncPath(file.path, file instanceof TFolder)) return;
+        this.wsClient.sendFileDelete(file.path);
       })
     );
 
     this.registerEvent(
       this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
         if (!this.settings.syncOnModify) return;
-        if (this.wsClient.getState() === WsState.CONNECTED) {
-          this.wsClient.sendFileRename(oldPath, file.path);
-        }
+        if (!this.shouldSyncPath(file.path, file instanceof TFolder)) return;
+        this.wsClient.sendFileRename(oldPath, file.path);
       })
     );
 
@@ -424,10 +658,6 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   }
 
   onunload(): void {
-    for (const timer of this.modifyDebounceTimers.values()) {
-        clearTimeout(timer);
-    }
-    this.modifyDebounceTimers.clear();
     this.wsClient.disconnect();
   }
 
@@ -441,6 +671,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     if (!this.settings.serverUrl || !this.settings.apiToken) return;
     
     new Notice('ObsidianApiSync: Syncing files from server...');
+    const pullStartTime = Date.now();
     try {
       const listResp = await requestUrl({
         url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files?include_content=true`,
@@ -452,30 +683,38 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       let created = 0;
       let updated = 0;
 
-      // Helper to convert base64 to ArrayBuffer
-      const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
-        const binaryString = window.atob(base64);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        return bytes.buffer;
-      };
-
       for (const item of data.files) {
         const path = item.path;
-        if (item.content_omitted) {
-            new Notice(`ObsidianApiSync: File ${path} is too large to sync.`);
-            continue;
+
+        if ((this.localModificationTimes.get(path) || 0) > pullStartTime) {
+          continue;
         }
-        const isBinary = item.content_base64 !== undefined;
-        let remoteContent: string | null = null;
-        let remoteBuffer: ArrayBuffer | null = null;
-        if (isBinary) {
-            remoteBuffer = base64ToArrayBuffer(item.content_base64);
-        } else {
-            remoteContent = item.content;
+
+        let remoteContent = item.content;
+        let isBin = !!item.is_binary;
+        
+        if (remoteContent === null) {
+          // Download large file
+          new Notice(`ObsidianApiSync: Downloading large file ${path}...`);
+          try {
+            const dlResp = await requestUrl({
+              url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/download/${encodeURI(path)}`,
+              headers: { Authorization: `Bearer ${this.settings.apiToken}` }
+            });
+            remoteContent = this.arrayBufferToBase64(dlResp.arrayBuffer);
+          } catch(e) {
+            this.showError(`Failed to download ${path}`, e);
+            continue;
+          }
+        }
+
+        try {
+          const dec = await this.decryptInboundContent(path, remoteContent, isBin);
+          remoteContent = dec.decryptedStr;
+          isBin = dec.decryptedIsBinary;
+        } catch (err) {
+          this.showError(`Failed to decrypt inbound HTTP data for ${path}`, err);
+          continue;
         }
         
         // Handle Obsidian settings/plugins folder
@@ -487,49 +726,24 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           try {
             const exists = await this.app.vault.adapter.exists(path);
             if (exists) {
-              let changed = false;
-              if (isBinary) {
-                const localBytes = await this.app.vault.adapter.readBinary(path);
-                if (localBytes.byteLength !== remoteBuffer!.byteLength) {
-                    changed = true;
-                } else {
-                    const localArr = new Uint8Array(localBytes);
-                    const remoteArr = new Uint8Array(remoteBuffer!);
-                    for (let i = 0; i < localArr.length; i++) {
-                        if (localArr[i] !== remoteArr[i]) {
-                            changed = true;
-                            break;
-                        }
-                    }
-                }
-              } else {
-                const localContent = await this.app.vault.adapter.read(path);
-                const normalizedLocal = localContent.replace(/\r\n/g, '\n');
-                const normalizedRemote = remoteContent!.replace(/\r\n/g, '\n');
-                changed = normalizedLocal !== normalizedRemote;
-              }
-
-              if (changed) {
+              const localContent = await this.app.vault.adapter.read(path);
+              const normalizedLocal = localContent.replace(/\r\n/g, '\n');
+              const normalizedRemote = remoteContent.replace(/\r\n/g, '\n');
+              if (normalizedLocal !== normalizedRemote) {
                 if (this.modifyDebounceTimers.has(path)) {
                   clearTimeout(this.modifyDebounceTimers.get(path)!);
                   this.modifyDebounceTimers.delete(path);
                 }
                 this.remoteChangeLocks.set(path, Date.now() + 800);
-                if (isBinary) {
-                  await this.app.vault.adapter.writeBinary(path, remoteBuffer!);
-                } else {
-                  await this.app.vault.adapter.write(path, remoteContent!);
-                }
+                await this.app.vault.adapter.write(path, remoteContent);
+                this.wsClient.updateHashCache(path, remoteContent, false);
                 updated++;
               }
             } else {
               this.remoteChangeLocks.set(path, Date.now() + 800);
               await this.ensureAdapterFolderExists(path);
-              if (isBinary) {
-                await this.app.vault.adapter.writeBinary(path, remoteBuffer!);
-              } else {
-                await this.app.vault.adapter.write(path, remoteContent!);
-              }
+              await this.app.vault.adapter.write(path, remoteContent);
+              this.wsClient.updateHashCache(path, remoteContent, false);
               created++;
             }
           } catch(e) {
@@ -537,57 +751,44 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           }
           continue;
         }
+
+        if (!this.shouldSyncPath(path, false)) continue;
         const localFile = this.app.vault.getAbstractFileByPath(path);
-        
         if (localFile instanceof TFile) {
-          let changed = false;
-          if (isBinary) {
-            const localBytes = await this.app.vault.readBinary(localFile);
-            const remoteBuffer = base64ToArrayBuffer(item.content_base64);
-            if (localBytes.byteLength !== remoteBuffer.byteLength) {
-                changed = true;
-            } else {
-                const localArr = new Uint8Array(localBytes);
-                const remoteArr = new Uint8Array(remoteBuffer);
-                for (let i = 0; i < localArr.length; i++) {
-                    if (localArr[i] !== remoteArr[i]) {
-                        changed = true;
-                        break;
-                    }
-                }
-            }
-            if (changed) {
-              if (this.modifyDebounceTimers.has(localFile.path)) {
-                clearTimeout(this.modifyDebounceTimers.get(localFile.path)!);
-                this.modifyDebounceTimers.delete(localFile.path);
-              }
-              this.remoteChangeLocks.set(localFile.path, Date.now() + 800);
-              await this.app.vault.modifyBinary(localFile, remoteBuffer);
-              updated++;
-            }
+          let normalizedLocal = '';
+          let normalizedRemote = '';
+          if (isBin) {
+            const currentBuffer = await this.app.vault.readBinary(localFile);
+            normalizedLocal = this.arrayBufferToBase64(currentBuffer);
+            normalizedRemote = remoteContent;
           } else {
-            const remoteContent = item.content;
             const localContent = await this.app.vault.read(localFile);
-            const normalizedLocal = localContent.replace(/\\r\\n/g, '\\n');
-            const normalizedRemote = remoteContent.replace(/\\r\\n/g, '\\n');
-            if (normalizedLocal !== normalizedRemote) {
-              if (this.modifyDebounceTimers.has(localFile.path)) {
-                clearTimeout(this.modifyDebounceTimers.get(localFile.path)!);
-                this.modifyDebounceTimers.delete(localFile.path);
-              }
-              this.remoteChangeLocks.set(localFile.path, Date.now() + 800);
-              await this.app.vault.modify(localFile, remoteContent);
-              updated++;
+            normalizedLocal = localContent.replace(/\r\n/g, '\n');
+            normalizedRemote = remoteContent.replace(/\r\n/g, '\n');
+          }
+          if (normalizedLocal !== normalizedRemote) {
+            if (this.modifyDebounceTimers.has(localFile.path)) {
+              clearTimeout(this.modifyDebounceTimers.get(localFile.path)!);
+              this.modifyDebounceTimers.delete(localFile.path);
             }
+            this.remoteChangeLocks.set(localFile.path, Date.now() + 800);
+            if (isBin) {
+              await this.app.vault.modifyBinary(localFile, this.base64ToArrayBuffer(remoteContent));
+            } else {
+              await this.app.vault.modify(localFile, remoteContent);
+            }
+            this.wsClient.updateHashCache(localFile.path, item.content, !!item.is_binary);
+            updated++;
           }
         } else if (!localFile) {
           this.remoteChangeLocks.set(path, Date.now() + 800);
           await this.ensureFolderExists(path);
-          if (isBinary) {
-            await this.app.vault.createBinary(path, base64ToArrayBuffer(item.content_base64));
+          if (isBin) {
+            await this.app.vault.createBinary(path, this.base64ToArrayBuffer(remoteContent));
           } else {
-            await this.app.vault.create(path, item.content);
+            await this.app.vault.create(path, remoteContent);
           }
+          this.wsClient.updateHashCache(path, item.content, !!item.is_binary);
           created++;
         }
       }
@@ -598,25 +799,28 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         new Notice('ObsidianApiSync Complete: Vault is up to date.');
       }
     } catch (err) {
-      console.error('[ObsidianApiSync] Pull failed:', err);
-      // Gracefully inform the user that no updates were pulled, ensuring a professional and seamless experience.
-      new Notice('ObsidianApiSync: Vault is up to date (No new updates found).');
+      this.showError("Pull failed:", err);
+      new Notice('ObsidianApiSync Failed. Check console.');
     }
   }
 
-  async httpFallbackWrite(file: TFile): Promise<void> {
+  async httpFallbackWrite(file: TFile, contentStr?: string, isBinary?: boolean): Promise<void> {
     try {
-      const isBinary = !['md', 'txt', 'csv', 'json', 'yaml', 'yml'].includes(file.extension.toLowerCase());
       
-      let body: string | ArrayBuffer;
-      let contentType: string;
-      if (isBinary) {
-          body = await this.app.vault.readBinary(file);
-          contentType = 'application/octet-stream';
+      let finalContent: string | ArrayBuffer = contentStr || '';
+      let isBin = isBinary !== undefined ? isBinary : this.isBinaryFile(file.path);
+      if (!contentStr) {
+        if (isBin) {
+          finalContent = await this.app.vault.readBinary(file);
+        } else {
+          finalContent = await this.app.vault.read(file);
+        }
       } else {
-          body = await this.app.vault.read(file);
-          contentType = 'text/plain';
+        if (isBin) {
+          finalContent = this.base64ToArrayBuffer(contentStr);
+        }
       }
+    
 
       // Encode the file path so it's safe in a URL segment
       const encodedPath = file.path
@@ -629,9 +833,9 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.settings.apiToken}`,
-          'Content-Type': contentType,
+          'Content-Type': 'text/plain',
         },
-        body: body,
+        body: finalContent,
       });
     } catch (err) {
       const message =
@@ -672,17 +876,21 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     }
   }
 
-  async httpFallbackWriteRaw(path: string, content: string): Promise<void> {
+  async httpFallbackWriteRaw(path: string, contentStr: string, isBinary: boolean = false): Promise<void> {
     try {
       const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+      let body: string | ArrayBuffer = contentStr;
+      if (isBinary) {
+          body = this.base64ToArrayBuffer(contentStr);
+      }
       await requestUrl({
         url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/${encodedPath}`,
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.settings.apiToken}`,
-          'Content-Type': 'text/plain',
+          'Content-Type': 'application/octet-stream',
         },
-        body: content,
+        body,
       });
     } catch (err) {
       this.showError("HTTP fallback raw error:", err);
