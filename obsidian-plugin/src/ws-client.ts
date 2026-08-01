@@ -11,7 +11,6 @@ import {
   OutboundPayload,
   VaultRestoredPayload,
 } from './types';
-import { fnv1a } from './utils';
 
 export enum WsState {
   DISCONNECTED = 'DISCONNECTED',
@@ -45,13 +44,9 @@ export class ObsidianApiSyncWsClient {
   public onStateChange: ((state: WsState) => void) | null = null;
   public onConnected: ((clientId: string) => void) | null = null;
   public onError: ((payload: ErrorPayload) => void) | null = null;
-  public onConflict?: (payload: { path: string; server_content: string; client_content: string }) => void;
 
   /** Last-known hash per file path, used for conflict detection. */
-  public contentHashCache = new Map<string, string>();
-  public onHashUpdate: ((path: string, hash: string) => void) | null = null;
   public getKnownHash(path: string): string {
-    return this.contentHashCache.get(path) ?? "";
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
@@ -158,15 +153,11 @@ export class ObsidianApiSyncWsClient {
    * Instantly sends a modify payload, or queues it if disconnected.
    */
   sendFileModify(path: string, content: string, is_binary: boolean = false): void {
-    // Attach the hash of the content we last knew so the server can detect conflicts.
-    const base_hash = is_binary ? '' : (this.contentHashCache.get(path) ?? '');
-    const newHash = is_binary ? '' : fnv1a(content);
     const payload = {
       type: 'FILE_MODIFY' as const,
       path,
       content,
       is_binary,
-      base_hash,
     };
 
     if (this.state === WsState.CONNECTED && this.ws) {
@@ -174,9 +165,6 @@ export class ObsidianApiSyncWsClient {
     } else {
       this.enqueue(payload);
     }
-    // Optimistically update the cache so rapid consecutive sends don't false-positive
-    this.contentHashCache.set(path, newHash);
-    if (this.onHashUpdate) this.onHashUpdate(path, newHash);
   }
 
   /**
@@ -191,9 +179,6 @@ export class ObsidianApiSyncWsClient {
       this.enqueue(payload);
     }
     if (!is_binary) {
-      const h = fnv1a(content);
-      this.contentHashCache.set(path, h);
-      if (this.onHashUpdate) this.onHashUpdate(path, h);
     }
   }
 
@@ -247,9 +232,6 @@ export class ObsidianApiSyncWsClient {
 
   updateHashCache(path: string, content: string, is_binary: boolean = false): void {
     if (!is_binary) {
-      const h = fnv1a(content);
-      this.contentHashCache.set(path, h);
-      if (this.onHashUpdate) this.onHashUpdate(path, h);
     }
   }
 
@@ -296,7 +278,6 @@ export class ObsidianApiSyncWsClient {
     switch (payload.type) {
       case 'FILE_CHANGED':
         if (!payload.is_binary) {
-          this.contentHashCache.set(payload.path, fnv1a(payload.content));
         }
         if (this.onFileChanged) {
           Promise.resolve(this.onFileChanged(payload)).catch(console.error);
@@ -334,14 +315,6 @@ export class ObsidianApiSyncWsClient {
         })();
         break;
       }
-
-      case 'CONFLICT': {
-        if (this.onConflict) {
-          this.onConflict(payload as { path: string; server_content: string; client_content: string });
-        }
-        break;
-      }
-
       case 'ERROR':
         if (this.onError) {
           this.onError(payload);

@@ -33,14 +33,6 @@ from locks import file_locks
 
 logger = logging.getLogger(__name__)
 
-def _fnv1a(content: str) -> str:
-    """FNV-1a 32-bit hash — matches the TypeScript client implementation exactly.
-    Used for conflict detection only; not a security primitive."""
-    h = 0x811c9dc5
-    for ch in content.encode("utf-8", errors="replace"):
-        h ^= ch
-        h = (h * 0x01000193) & 0xFFFFFFFF
-    return format(h, '08x')
 
 router = APIRouter()
 
@@ -212,31 +204,12 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                 if msg_type == "FILE_MODIFY":
                     content: str | None = payload.get("content")
                     is_binary: bool = payload.get("is_binary", False)
-                    base_hash: str = payload.get("base_hash", "")
                     if content is None:
                         await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "FILE_MODIFY requires 'content'."})
                         continue
 
                     lock = await file_locks.acquire(str(target_file))
                     async with lock:
-                        # Conflict detection: if client sent a base_hash, check it
-                        # against the current server file. Mismatch = concurrent edit.
-                        if base_hash and not is_binary and target_file.exists():
-                            try:
-                                current_text = await asyncio.to_thread(target_file.read_text, encoding="utf-8", errors="replace")
-                                current_hash = _fnv1a(current_text)
-                                if current_hash != base_hash:
-                                    # Send conflict back to the originating client only
-                                    await websocket.send_json({
-                                        "type": "CONFLICT",
-                                        "path": file_path,
-                                        "server_content": current_text,
-                                        "client_content": content,
-                                    })
-                                    continue  # Do NOT write to disk
-                            except OSError:
-                                pass  # If we can't read the file, just let the write proceed
-        
                         if target_file.exists():
                             await asyncio.to_thread(save_version, Path(vault_path), file_path)
         
