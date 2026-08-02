@@ -487,6 +487,7 @@ function renderTreeNode(node, prefix = '') {
     const renBtn = document.createElement('button');
     renBtn.className = 'action-btn';
     renBtn.title = 'Rename';
+    renBtn.setAttribute('aria-label', 'Rename file');
     renBtn.innerHTML = '✏️';
     renBtn.addEventListener('click', (e) => { e.stopPropagation(); promptRenameFile(file.path); });
 
@@ -494,6 +495,7 @@ function renderTreeNode(node, prefix = '') {
     const delBtn = document.createElement('button');
     delBtn.className = 'action-btn';
     delBtn.title = 'Delete';
+    delBtn.setAttribute('aria-label', 'Delete file');
     delBtn.innerHTML = '🗑️';
     delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteFile(file.path); });
 
@@ -1187,7 +1189,7 @@ function showInputModal(title, message, defaultValue, confirmLabel = 'OK') {
       <div class="modal-box">
         <h3 class="text-sm font-semibold text-on-surface mb-2">${escapeHtml(title)}</h3>
         <p class="text-xs text-muted mb-4">${escapeHtml(message)}</p>
-        <input type="text" class="input w-full mb-4" id="modal-input" value="${escapeHtml(defaultValue)}" />
+        <input type="text" aria-label="Input field" class="input w-full mb-4" id="modal-input" value="${escapeHtml(defaultValue)}" />
         <div class="flex gap-2 justify-end">
           <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
           <button class="btn btn-primary" id="modal-confirm">${escapeHtml(confirmLabel)}</button>
