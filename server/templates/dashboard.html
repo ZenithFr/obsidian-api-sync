@@ -611,7 +611,8 @@
           <h2 class="text-xl font-semibold text-on-surface">File Version History</h2>
           <p class="text-sm text-muted mt-1">Browse past versions of your synced files.</p>
         </div>
-        <input id="history-search" type="text" placeholder="Search by filename…" class="input w-64" />
+        <label for="history-search" class="sr-only">Search by filename</label>
+        <input id="history-search" type="text" placeholder="Search by filename…" aria-label="Search by filename" class="input w-64" />
       </div>
       <div id="history-file-list" class="space-y-1">
         <!-- Populated by JS -->
