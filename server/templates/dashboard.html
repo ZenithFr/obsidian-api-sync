@@ -423,6 +423,7 @@
       </div>
 
       <div class="flex flex-col sm:flex-row gap-3">
+        <label for="token-label-input" class="sr-only">Token Label</label>
         <input id="token-label-input" type="text" aria-label="Token Label"
                placeholder="Token Label (e.g. 'MacBook Pro' or 'Hermes AI')"
                class="input flex-1" />
@@ -611,7 +612,8 @@
           <h2 class="text-xl font-semibold text-on-surface">File Version History</h2>
           <p class="text-sm text-muted mt-1">Browse past versions of your synced files.</p>
         </div>
-        <input id="history-search" type="text" placeholder="Search by filename…" class="input w-64" />
+        <label for="history-search" class="sr-only">Search by filename</label>
+        <input id="history-search" type="text" placeholder="Search by filename…" aria-label="Search by filename" class="input w-64" />
       </div>
       <div id="history-file-list" class="space-y-1">
         <!-- Populated by JS -->
