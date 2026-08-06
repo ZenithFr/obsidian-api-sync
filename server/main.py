@@ -45,9 +45,9 @@ from database import (
 )
 from limiter import limiter
 from routers.files import router as files_router
-from routers.ws import router as ws_router
-from routers.versions import router as versions_router
 from routers.snapshots import router as snapshots_router
+from routers.versions import router as versions_router
+from routers.ws import router as ws_router
 
 logger = logging.getLogger(__name__)
 

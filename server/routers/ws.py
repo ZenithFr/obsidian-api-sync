@@ -303,12 +303,12 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     lock = await file_locks.acquire(str(target_file))
                     async with lock:
                         if target_file.exists():
-                            await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "Path already exists."})
+                            await websocket.send_json({"type": "NO_UPDATE_NEEDED", "code": "PATH_EXISTS", "message": "Path already exists."})
                             continue
                         try:
                             await asyncio.to_thread(target_file.mkdir, parents=True, exist_ok=True)
                         except FileExistsError:
-                            await websocket.send_json({"type": "ERROR", "code": "INVALID_PATH", "message": "A file already exists at this path."})
+                            await websocket.send_json({"type": "NO_UPDATE_NEEDED", "code": "PATH_EXISTS", "message": "A file already exists at this path."})
                             continue
                     ts = _utcnow_iso()
                     await manager.broadcast(

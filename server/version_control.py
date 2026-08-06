@@ -1,8 +1,7 @@
-import os
 import shutil
 import time
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Max versions per file
@@ -118,9 +117,7 @@ def move_to_trash(vault_path: Path, relative_file_path: str) -> None:
     
     trash_path = trash_target_dir / f"{ts}-{uid}_{file_path.name}"
     
-    if file_path.is_file():
-        shutil.move(str(file_path), str(trash_path))
-    elif file_path.is_dir():
+    if file_path.is_file() or file_path.is_dir():
         shutil.move(str(file_path), str(trash_path))
         
     cleanup_trash(trash_dir)

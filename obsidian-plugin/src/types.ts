@@ -88,6 +88,12 @@ export interface ErrorPayload {
   message: string;
 }
 
+export interface NoUpdateNeededPayload {
+  type: 'NO_UPDATE_NEEDED';
+  code: string;
+  message: string;
+}
+
 // ─── WebSocket Payloads ──────────────────────────────────────────────────────
 
 export interface FileModifyPayload {
@@ -122,4 +128,5 @@ export type InboundPayload =
   | VaultRestoredPayload
   | { type: 'PING'; ts: string }
   | { type: 'ERROR'; code: string; message: string }
-  | { type: 'CONNECTED'; client_id: string };
+  | { type: 'CONNECTED'; client_id: string }
+  | NoUpdateNeededPayload;

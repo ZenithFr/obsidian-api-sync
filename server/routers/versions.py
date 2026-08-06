@@ -2,15 +2,21 @@
 routers/versions.py -- REST endpoints for accessing file versions and the trash.
 """
 
+import shutil
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from pathlib import Path
-import shutil
-import base64
 
 from auth import get_current_token
-from database import get_vault_path, add_audit
-from version_control import list_versions, list_trash, move_to_trash, _get_versions_dir, _get_trash_dir
+from database import add_audit, get_vault_path
+from version_control import (
+    _get_trash_dir,
+    _get_versions_dir,
+    list_trash,
+    list_versions,
+    move_to_trash,
+)
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 

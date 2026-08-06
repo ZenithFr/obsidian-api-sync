@@ -323,6 +323,10 @@ export class ObsidianApiSyncWsClient {
           this.onError(payload);
         }
         break;
+      case 'NO_UPDATE_NEEDED':
+        // Silently ignore or log debug info
+        console.debug('[ObsidianApiSync] No update needed:', payload.message);
+        break;
 
       default:
         console.warn('[ObsidianApiSync] Unknown payload type:', (payload as { type: string }).type);

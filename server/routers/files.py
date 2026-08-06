@@ -6,26 +6,25 @@ dependency.  Write operations also broadcast a WebSocket event to all
 connected clients through the shared ConnectionManager instance in ws.py.
 """
 
+import asyncio
+import base64
+import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-import base64
-import asyncio
-import shutil
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Header
-from fastapi.responses import JSONResponse, Response, FileResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
-import base64
 
 from auth import get_current_token
 from config import settings
 from database import add_audit, get_vault_path
 from limiter import limiter
-from routers.ws import manager
-from version_control import save_version, move_to_trash, _get_versions_dir
 from locks import file_locks
-import os
-from uuid import uuid4
+from routers.ws import manager
+from version_control import _get_versions_dir, move_to_trash, save_version
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 
@@ -236,6 +235,7 @@ async def read_file(
 # -- GET /api/files/download/{path} -------------------------------------------
 
 from fastapi.responses import FileResponse
+
 
 @router.get(
     "/download/{path:path}",

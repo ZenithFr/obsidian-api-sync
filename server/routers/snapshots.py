@@ -4,7 +4,6 @@ routers/snapshots.py -- Point-in-Time Vault Recovery endpoints.
 
 import asyncio
 import os
-import shutil
 import time
 import zipfile
 from datetime import datetime, timezone
@@ -15,8 +14,8 @@ from fastapi.responses import JSONResponse
 
 from auth import get_current_token
 from database import add_audit, get_vault_path
-from routers.ws import manager
 from locks import file_locks
+from routers.ws import manager
 
 router = APIRouter(prefix="/api/snapshots", tags=["snapshots"])
 

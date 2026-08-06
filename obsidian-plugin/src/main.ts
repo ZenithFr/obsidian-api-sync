@@ -354,6 +354,10 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     };
 
     this.wsClient.onError = (payload) => {
+      if (payload.code === 'INVALID_PATH' && (payload.message === 'Path already exists.' || payload.message === 'A file already exists at this path.')) {
+        console.debug('[ObsidianApiSync] Ignoring already exists error:', payload.message);
+        return;
+      }
       new Notice(`⚠️ ObsidianApiSync error [${payload.code}]: ${payload.message}`);
     };
 
