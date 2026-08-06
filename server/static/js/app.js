@@ -622,9 +622,10 @@ async function openFile(filePath) {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     
+    const data = await res.json();
     let content = '';
     if (!isBinary) {
-        content = await res.text();
+        content = data.content || '';
     }
 
     state.currentFile    = safe;
