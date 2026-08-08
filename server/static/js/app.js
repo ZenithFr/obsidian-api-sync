@@ -487,6 +487,7 @@ function renderTreeNode(node, prefix = '') {
     const renBtn = document.createElement('button');
     renBtn.className = 'action-btn';
     renBtn.title = 'Rename';
+    renBtn.setAttribute('aria-label', 'Rename file');
     renBtn.innerHTML = '✏️';
     renBtn.addEventListener('click', (e) => { e.stopPropagation(); promptRenameFile(file.path); });
 
@@ -494,6 +495,7 @@ function renderTreeNode(node, prefix = '') {
     const delBtn = document.createElement('button');
     delBtn.className = 'action-btn';
     delBtn.title = 'Delete';
+    delBtn.setAttribute('aria-label', 'Delete file');
     delBtn.innerHTML = '🗑️';
     delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteFile(file.path); });
 
