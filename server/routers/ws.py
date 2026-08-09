@@ -27,7 +27,7 @@ from config import settings
 from database import add_audit, get_vault_path
 from locks import file_locks
 from version_control import _get_versions_dir, move_to_trash, save_version
-from routers.files import _fnv1a
+from hashing import fnv1a as _fnv1a
 
 logger = logging.getLogger(__name__)
 
