@@ -184,3 +184,89 @@ export class VersionHistoryModal extends Modal {
 
 // ─── Conflict Resolution Modal ────────────────────────────────────────────────
 
+export class ConflictModal extends Modal {
+    plugin: ObsidianApiSyncPlugin;
+    conflictedPath: string;
+    serverMtime?: number;
+    onResolve: () => void;
+
+    constructor(app: App, plugin: ObsidianApiSyncPlugin, path: string, serverMtime: number | undefined, onResolve: () => void) {
+        super(app);
+        this.plugin = plugin;
+        this.conflictedPath = path;
+        this.serverMtime = serverMtime;
+        this.onResolve = onResolve;
+    }
+
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.createEl('h2', { text: 'Sync Conflict Detected' });
+
+        let timeText = '';
+        if (this.serverMtime) {
+            const date = new Date(this.serverMtime);
+            // Format to IST
+            const istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' });
+            timeText = ` at ${istTime} (IST)`;
+        }
+
+        contentEl.createEl('p', { 
+            text: `The file "${this.conflictedPath}" was modified on the server${timeText} while you were disconnected. Your local changes could not be synced because they would overwrite the newer server version.` 
+        });
+
+        const btnContainer = contentEl.createDiv({ cls: 'conflict-buttons' });
+        btnContainer.style.display = 'flex';
+        btnContainer.style.gap = '10px';
+        btnContainer.style.marginTop = '20px';
+
+        const btnRemote = btnContainer.createEl('button', { text: 'Keep Remote (Discard Local)' });
+        btnRemote.onclick = async () => {
+            btnRemote.disabled = true;
+            btnRemote.textContent = 'Pulling...';
+            try {
+                await this.plugin.pullAllFiles(); // Pulls the server version
+                new Notice(`Resolved conflict for ${this.conflictedPath} using Remote version.`);
+                this.close();
+            } catch (err) {
+                new Notice(`Failed to pull remote file: ${err}`);
+                btnRemote.disabled = false;
+                btnRemote.textContent = 'Keep Remote (Discard Local)';
+            }
+        };
+
+        const btnLocal = btnContainer.createEl('button', { text: 'Keep Local (Overwrite Remote)', cls: 'mod-warning' });
+        btnLocal.onclick = async () => {
+            btnLocal.disabled = true;
+            btnLocal.textContent = 'Pushing...';
+            try {
+                const isBinary = this.plugin.isBinaryFile(this.conflictedPath);
+                let contentStr = '';
+                const file = this.app.vault.getAbstractFileByPath(this.conflictedPath);
+                if (file instanceof TFile) {
+                    if (isBinary) {
+                        const buffer = await this.app.vault.readBinary(file);
+                        contentStr = this.plugin.arrayBufferToBase64(buffer);
+                    } else {
+                        contentStr = await this.app.vault.read(file);
+                    }
+                    const encrypted = await this.plugin.encryptPayloadIfNeeded(contentStr, isBinary);
+                    this.plugin.wsClient.sendFileModifyForce(this.conflictedPath, encrypted.contentStr, encrypted.isBinary);
+                    new Notice(`Resolved conflict for ${this.conflictedPath} using Local version.`);
+                    this.close();
+                } else {
+                    new Notice('Local file not found.');
+                }
+            } catch (err) {
+                new Notice(`Failed to force local overwrite: ${err}`);
+                btnLocal.disabled = false;
+                btnLocal.textContent = 'Keep Local (Overwrite Remote)';
+            }
+        };
+    }
+
+    onClose() {
+        this.contentEl.empty();
+        this.onResolve();
+    }
+}

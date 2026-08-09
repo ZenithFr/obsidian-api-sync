@@ -27,6 +27,7 @@ from config import settings
 from database import add_audit, get_vault_path
 from locks import file_locks
 from version_control import _get_versions_dir, move_to_trash, save_version
+from routers.files import _fnv1a
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +209,15 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     lock = await file_locks.acquire(str(target_file))
                     async with lock:
                         if target_file.exists():
+                            if not is_binary:
+                                base_hash: str | None = payload.get("base_hash")
+                                if base_hash:
+                                    current_content = await asyncio.to_thread(target_file.read_text, encoding="utf-8", errors="replace")
+                                    current_hash = _fnv1a(current_content)
+                                    if current_hash != base_hash:
+                                        mtime_ts = int(target_file.stat().st_mtime * 1000)
+                                        await websocket.send_json({"type": "ERROR", "code": "CONFLICT", "message": "File modified on server.", "path": file_path, "server_mtime": mtime_ts})
+                                        continue
                             await asyncio.to_thread(save_version, Path(vault_path), file_path)
         
                         target_file.parent.mkdir(parents=True, exist_ok=True)

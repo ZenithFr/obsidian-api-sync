@@ -13,6 +13,7 @@ import {
   VaultRestoredPayload,
   OutboundPayload,
 } from './types';
+import { fnv1a } from './utils';
 
 export enum WsState {
   DISCONNECTED = 'DISCONNECTED',
@@ -48,8 +49,9 @@ export class ObsidianApiSyncWsClient {
   public onError: ((payload: ErrorPayload) => void) | null = null;
 
   /** Last-known hash per file path, used for conflict detection. */
+  private fileHashes: Map<string, string> = new Map();
   public getKnownHash(path: string): string {
-    return "";
+    return this.fileHashes.get(path) || "";
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
@@ -161,6 +163,7 @@ export class ObsidianApiSyncWsClient {
       path,
       content,
       is_binary,
+      base_hash: (!is_binary && this.fileHashes.has(path)) ? this.fileHashes.get(path) : '',
     };
 
     if (this.state === WsState.CONNECTED && this.ws) {
@@ -233,8 +236,15 @@ export class ObsidianApiSyncWsClient {
     }
   }
 
+  clearQueueForPath(path: string): void {
+    this.sendQueue = this.sendQueue.filter(
+      (item) => !('path' in item) || (item as any).path !== path
+    );
+  }
+
   updateHashCache(path: string, content: string, is_binary: boolean = false): void {
     if (!is_binary) {
+      this.fileHashes.set(path, fnv1a(content));
     }
   }
 

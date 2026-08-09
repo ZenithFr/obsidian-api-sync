@@ -86,6 +86,8 @@ export interface ErrorPayload {
   type: 'ERROR';
   code: string;
   message: string;
+  path?: string;
+  server_mtime?: number;
 }
 
 export interface NoUpdateNeededPayload {

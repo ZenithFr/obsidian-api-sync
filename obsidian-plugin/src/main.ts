@@ -2,16 +2,17 @@ import { Plugin, TFile, TAbstractFile, Notice, TFolder, requestUrl } from 'obsid
 import { ObsidianApiSyncSettings, DEFAULT_SETTINGS } from './types';
 import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
 import { ObsidianApiSyncSettingTab } from './settings';
-import { TrashRecoveryModal, VersionHistoryModal } from './modals';
+import { TrashRecoveryModal, VersionHistoryModal, ConflictModal } from './modals';
 import { encryptText, decryptText, encryptBinary, decryptBinary, arrayBufferToBase64, base64ToArrayBuffer, isEncryptedText, isEncryptedBinary } from './encryption';
 
 export default class ObsidianApiSyncPlugin extends Plugin {
   settings!: ObsidianApiSyncSettings;
   wsClient!: ObsidianApiSyncWsClient;
+  modifyVersions: Map<string, number> = new Map();
+  modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+  activeConflicts: Set<string> = new Set();
   private statusBarItem!: HTMLElement;
-  private modifyDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private remoteChangeLocks: Map<string, number> = new Map();
-  private modifyVersions: Map<string, number> = new Map();
   private localModificationTimes: Map<string, number> = new Map();
 
 
@@ -356,6 +357,17 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     this.wsClient.onError = (payload) => {
       if (payload.code === 'INVALID_PATH' && (payload.message === 'Path already exists.' || payload.message === 'A file already exists at this path.')) {
         console.debug('[ObsidianApiSync] Ignoring already exists error:', payload.message);
+        return;
+      }
+      if (payload.code === 'CONFLICT' && payload.path) {
+        if (this.activeConflicts.has(payload.path)) return;
+        this.activeConflicts.add(payload.path);
+        this.wsClient.clearQueueForPath(payload.path);
+        
+        console.warn(`[ObsidianApiSync] Conflict detected for ${payload.path}`);
+        new ConflictModal(this.app, this, payload.path, payload.server_mtime, () => {
+          this.activeConflicts.delete(payload.path!);
+        }).open();
         return;
       }
       new Notice(`⚠️ ObsidianApiSync error [${payload.code}]: ${payload.message}`);
