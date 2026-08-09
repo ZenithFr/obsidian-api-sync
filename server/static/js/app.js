@@ -470,6 +470,8 @@ function renderTreeNode(node, prefix = '') {
     el.className = 'tree-item' + (state.currentFile === file.path ? ' active' : '');
     el.setAttribute('data-path', file.path);
     el.title = file.path;
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
 
     const icon = document.createElement('span');
     icon.style.cssText = 'flex-shrink:0;font-size:12px;opacity:0.5';
@@ -506,6 +508,12 @@ function renderTreeNode(node, prefix = '') {
     el.appendChild(label);
     el.appendChild(actions);
     el.addEventListener('click', () => openFile(file.path));
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openFile(file.path);
+      }
+    });
     frag.appendChild(el);
   }
 
@@ -528,6 +536,9 @@ function renderTreeNode(node, prefix = '') {
     header.className = 'tree-item';
     header.style.fontWeight = '500';
     header.style.color = '#c0c0c0';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', 'true'); // Default to expanded since class isn't collapsed initially
 
     const icon = document.createElement('span');
     icon.style.cssText = 'flex-shrink:0;font-size:12px;transition:transform .15s;';
@@ -539,9 +550,18 @@ function renderTreeNode(node, prefix = '') {
 
     header.appendChild(icon);
     header.appendChild(label);
-    header.addEventListener('click', () => {
+    const toggleFolder = () => {
       wrap.classList.toggle('collapsed');
-      icon.style.transform = wrap.classList.contains('collapsed') ? 'rotate(-90deg)' : '';
+      const isCollapsed = wrap.classList.contains('collapsed');
+      icon.style.transform = isCollapsed ? 'rotate(-90deg)' : '';
+      header.setAttribute('aria-expanded', !isCollapsed);
+    };
+    header.addEventListener('click', toggleFolder);
+    header.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleFolder();
+      }
     });
 
     const children = document.createElement('div');
@@ -604,7 +624,15 @@ function filterTree(query) {
   renderFileTree();
   if (state.searchFilter) {
     // Auto-expand all folders when filtering
-    document.querySelectorAll('.tree-folder.collapsed').forEach(el => el.classList.remove('collapsed'));
+    document.querySelectorAll('.tree-folder.collapsed').forEach(el => {
+      el.classList.remove('collapsed');
+      const header = el.querySelector('.tree-item');
+      if (header) {
+        header.setAttribute('aria-expanded', 'true');
+        const icon = header.querySelector('span');
+        if (icon) icon.style.transform = '';
+      }
+    });
   }
 }
 
