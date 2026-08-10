@@ -4,6 +4,7 @@ import { ObsidianApiSyncWsClient, WsState, createWsClient } from './ws-client';
 import { ObsidianApiSyncSettingTab } from './settings';
 import { TrashRecoveryModal, VersionHistoryModal, ConflictModal } from './modals';
 import { encryptText, decryptText, encryptBinary, decryptBinary, arrayBufferToBase64, base64ToArrayBuffer, isEncryptedText, isEncryptedBinary } from './encryption';
+import { ToastManager } from './utils';
 
 export default class ObsidianApiSyncPlugin extends Plugin {
   settings!: ObsidianApiSyncSettings;
@@ -85,6 +86,11 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     }
   }
 
+  async encryptBinaryBufferIfNeeded(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+    if (!this.settings.encryptionPassword) return buffer;
+    return await encryptBinary(buffer, this.settings.encryptionPassword);
+  }
+
   async uploadChunked(path: string, payloadStr: string, isBinary: boolean): Promise<void> {
     if (!this.settings.serverUrl || !this.settings.apiToken) return;
     const uploadId = (Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15));
@@ -96,8 +102,6 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     
     const chunkSize = 2 * 1024 * 1024; // 2MB
     const totalChunks = Math.ceil(base64Content.length / chunkSize);
-
-    new Notice(`ObsidianApiSync: Uploading ${path} in ${totalChunks} chunks...`);
 
     try {
       for (let i = 0; i < totalChunks; i++) {
@@ -132,9 +136,8 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           total_chunks: totalChunks
         })
       });
-      new Notice(`ObsidianApiSync: Finished uploading ${path}`);
     } catch (e) {
-      this.showError(`Failed to upload ${path} in chunks`, e);
+      this.showError('ERR-NET-CHUNK-01', e);
       try {
         await requestUrl({
           url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/chunk/${uploadId}`,
@@ -187,7 +190,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     // ── WS Callbacks ──────────────────────────────────────────────────────────
 
     this.wsClient.onVaultRestored = async (payload) => {
-      new Notice(`ObsidianApiSync: Server vault restored from snapshot ${payload.snapshot_id}! Re-syncing...`, 8000);
+      ToastManager.showInfo(`Server vault restored from snapshot ${payload.snapshot_id}! Re-syncing...`);
       
       // Reset caches
       
@@ -198,13 +201,32 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     };
 
     this.wsClient.onFileChanged = async (payload) => {
-      try {
-        const dec = await this.decryptInboundContent(payload.path, payload.content, !!payload.is_binary);
-        payload.content = dec.decryptedStr;
-        payload.is_binary = dec.decryptedIsBinary;
-      } catch (err) {
-        this.showError(`Failed to decrypt WebSocket change for ${payload.path}`, err);
-        return;
+      if (payload.is_binary && !payload.content) {
+        try {
+          const encodedPath = payload.path.split('/').map(encodeURIComponent).join('/');
+          const resp = await requestUrl({
+            url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/download/${encodedPath}`,
+            method: 'GET',
+            headers: { Authorization: `Bearer ${this.settings.apiToken}` }
+          });
+          let buffer = resp.arrayBuffer;
+          if (this.settings.encryptionPassword) {
+            buffer = await decryptBinary(buffer, this.settings.encryptionPassword);
+          }
+          payload.content = this.arrayBufferToBase64(buffer);
+        } catch (err) {
+          this.showError('ERR-NET-BIN-01', err);
+          return;
+        }
+      } else {
+        try {
+          const dec = await this.decryptInboundContent(payload.path, payload.content, !!payload.is_binary);
+          payload.content = dec.decryptedStr;
+          payload.is_binary = dec.decryptedIsBinary;
+        } catch (err) {
+          this.showError('ERR-CRYPTO-DEC-01', err);
+          return;
+        }
       }
 
       if (payload.path.startsWith(this.app.vault.configDir + '/')) {
@@ -231,7 +253,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             await this.app.vault.adapter.write(payload.path, payload.content);
           }
         } catch (err) {
-          this.showError("Failed to process remote .obsidian change:", err);
+          this.showError('ERR-FS-OBS-01', err);
         }
         return;
       }
@@ -264,7 +286,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               await this.app.vault.modify(file, payload.content);
             }
           } catch (err) {
-            this.showError("modify failed", err);
+            this.showError('ERR-FS-MOD-01', err);
           }
         }
       } else if (!file) {
@@ -277,7 +299,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             await this.app.vault.create(payload.path, payload.content);
           }
         } catch (err) {
-          this.showError("Failed to create file from remote change:", err);
+          this.showError('ERR-FS-CRE-01', err);
         }
       }
     };
@@ -304,7 +326,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           const exists = await this.app.vault.adapter.exists(payload.path);
           if (exists) await this.app.vault.adapter.remove(payload.path);
         } catch (err) {
-          this.showError("Failed to process remote .obsidian delete:", err);
+          this.showError('ERR-FS-DEL-01', err);
         }
         return;
       }
@@ -314,7 +336,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         try {
           await this.app.vault.trash(file, false); // move to system trash
         } catch (err) {
-          this.showError("Failed to process remote delete:", err);
+          this.showError('ERR-FS-DEL-02', err);
         }
       }
     };
@@ -329,7 +351,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             await this.app.vault.adapter.rename(payload.old_path, payload.new_path);
           }
         } catch (err) {
-          this.showError("Failed to process remote .obsidian rename:", err);
+          this.showError('ERR-FS-REN-01', err);
         }
         return;
       }
@@ -340,7 +362,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           await this.ensureFolderExists(payload.new_path);
           await this.app.vault.rename(file, payload.new_path);
         } catch (err) {
-          this.showError("Failed to process remote rename:", err);
+          this.showError('ERR-FS-REN-02', err);
         }
       }
     };
@@ -370,7 +392,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         }).open();
         return;
       }
-      new Notice(`⚠️ ObsidianApiSync error [${payload.code}]: ${payload.message}`);
+      this.showError('ERR-NET-SRV-01', new Error(payload.message));
     };
 
     // ── Settings Tab ──────────────────────────────────────────────────────────
@@ -444,25 +466,26 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               const stat = await this.app.vault.adapter.stat(path);
               if (stat && stat.type === 'file') {
                 const isBinary = this.isBinaryFile(path);
-                let contentStr = '';
                 if (isBinary) {
                   const buffer = await this.app.vault.adapter.readBinary(path);
-                  contentStr = this.arrayBufferToBase64(buffer);
+                  if (buffer.byteLength > 133 * 1024 * 1024) return;
+                  const encryptedBuf = await this.encryptBinaryBufferIfNeeded(buffer);
+                  if (this.modifyVersions.get(path) !== version) return;
+                  if (this.settings.serverUrl && this.settings.apiToken) {
+                    await this.httpFallbackWriteRaw(path, encryptedBuf, true);
+                  }
                 } else {
-                  contentStr = await this.app.vault.adapter.read(path);
-                }
-                if (contentStr.length > 133 * 1024 * 1024) {
-                  new Notice(`ObsidianApiSync: File ${path} is over 100MB limit. Skipping.`);
-                  return;
-                }
-                const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
-                if (this.modifyVersions.get(path) !== version) return;
-                if (encrypted.contentStr.length > 2 * 1024 * 1024) {
-                  await this.uploadChunked(path, encrypted.contentStr, encrypted.isBinary);
-                } else if (this.wsClient.getState() === WsState.CONNECTED) {
-                  this.wsClient.sendFileModify(path, encrypted.contentStr, encrypted.isBinary);
-                } else if (this.settings.serverUrl && this.settings.apiToken) {
-                  await this.httpFallbackWriteRaw(path, encrypted.contentStr, encrypted.isBinary);
+                  const contentStr = await this.app.vault.adapter.read(path);
+                  if (contentStr.length > 133 * 1024 * 1024) return;
+                  const encrypted = await this.encryptPayloadIfNeeded(contentStr, false);
+                  if (this.modifyVersions.get(path) !== version) return;
+                  if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+                    await this.uploadChunked(path, encrypted.contentStr, false);
+                  } else if (this.wsClient.getState() === WsState.CONNECTED) {
+                    this.wsClient.sendFileModify(path, encrypted.contentStr, false);
+                  } else if (this.settings.serverUrl && this.settings.apiToken) {
+                    await this.httpFallbackWriteRaw(path, encrypted.contentStr, false);
+                  }
                 }
               }
             }
@@ -499,7 +522,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
           if (currentContent.length > 133 * 1024 * 1024) {
-            new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
+            this.showError('ERR-FS-SIZE-01', `File ${file.path} is over 100MB limit. Skipping.`);
             return;
           }
           const encrypted = await this.encryptPayloadIfNeeded(currentContent, false);
@@ -536,23 +559,22 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         const timer = setTimeout(async () => {
           this.modifyDebounceTimers.delete(file.path);
           const isBinary = this.isBinaryFile(file.path);
-          let contentStr = '';
           if (isBinary) {
             const buffer = await this.app.vault.readBinary(file);
-            contentStr = this.arrayBufferToBase64(buffer);
+            if (buffer.byteLength > 133 * 1024 * 1024) return;
+            const encryptedBuf = await this.encryptBinaryBufferIfNeeded(buffer);
+            if (this.modifyVersions.get(file.path) !== version) return;
+            await this.httpFallbackWriteRaw(file.path, encryptedBuf, true);
           } else {
-            contentStr = await this.app.vault.read(file);
-          }
-          if (contentStr.length > 133 * 1024 * 1024) {
-            new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
-            return;
-          }
-          const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
-          if (this.modifyVersions.get(file.path) !== version) return;
-          if (encrypted.contentStr.length > 2 * 1024 * 1024) {
-            await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
-          } else {
-            this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+            const contentStr = await this.app.vault.read(file);
+            if (contentStr.length > 133 * 1024 * 1024) return;
+            const encrypted = await this.encryptPayloadIfNeeded(contentStr, false);
+            if (this.modifyVersions.get(file.path) !== version) return;
+            if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+              await this.uploadChunked(file.path, encrypted.contentStr, false);
+            } else {
+              this.wsClient.sendFileModify(file.path, encrypted.contentStr, false);
+            }
           }
         }, this.settings.syncDebounceMs || 150);
 
@@ -578,23 +600,22 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           setTimeout(async () => {
             if (this.wsClient.getState() === WsState.CONNECTED) {
               const isBinary = this.isBinaryFile(file.path);
-              let contentStr = '';
               if (isBinary) {
                 const buffer = await this.app.vault.readBinary(file);
-                contentStr = this.arrayBufferToBase64(buffer);
+                if (buffer.byteLength > 133 * 1024 * 1024) return;
+                const encryptedBuf = await this.encryptBinaryBufferIfNeeded(buffer);
+                if (this.modifyVersions.get(file.path) !== version) return;
+                await this.httpFallbackWriteRaw(file.path, encryptedBuf, true);
               } else {
-                contentStr = await this.app.vault.read(file);
-              }
-              if (contentStr.length > 133 * 1024 * 1024) {
-                new Notice(`ObsidianApiSync: File ${file.path} is over 100MB limit. Skipping.`);
-                return;
-              }
-              const encrypted = await this.encryptPayloadIfNeeded(contentStr, isBinary);
-              if (this.modifyVersions.get(file.path) !== version) return;
-              if (encrypted.contentStr.length > 2 * 1024 * 1024) {
-                await this.uploadChunked(file.path, encrypted.contentStr, encrypted.isBinary);
-              } else {
-                this.wsClient.sendFileModify(file.path, encrypted.contentStr, encrypted.isBinary);
+                const contentStr = await this.app.vault.read(file);
+                if (contentStr.length > 133 * 1024 * 1024) return;
+                const encrypted = await this.encryptPayloadIfNeeded(contentStr, false);
+                if (this.modifyVersions.get(file.path) !== version) return;
+                if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+                  await this.uploadChunked(file.path, encrypted.contentStr, false);
+                } else {
+                  this.wsClient.sendFileModify(file.path, encrypted.contentStr, false);
+                }
               }
             }
           }, 300);
@@ -630,7 +651,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         [WsState.RECONNECTING]: '🟡 ObsidianApiSync: Reconnecting to server…',
         [WsState.DISCONNECTED]: '🔴 ObsidianApiSync: Disconnected. Check settings.',
       };
-      new Notice(messages[state] ?? `ObsidianApiSync state: ${state}`);
+      ToastManager.showInfo(messages[state] ?? `ObsidianApiSync state: ${state}`, 500);
     });
   }
 
@@ -647,7 +668,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   async pullAllFiles(): Promise<void> {
     if (!this.settings.serverUrl || !this.settings.apiToken) return;
     
-    new Notice('ObsidianApiSync: Syncing files from server...');
+    ToastManager.showInfo('Syncing files from server...', 500);
     const pullStartTime = Date.now();
     try {
       const listResp = await requestUrl({
@@ -672,7 +693,6 @@ export default class ObsidianApiSyncPlugin extends Plugin {
         
         if (remoteContent === null) {
           // Download large file
-          new Notice(`ObsidianApiSync: Downloading large file ${path}...`);
           try {
             const dlResp = await requestUrl({
               url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/download/${path.split('/').map(encodeURIComponent).join('/')}`,
@@ -680,7 +700,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
             });
             remoteContent = this.arrayBufferToBase64(dlResp.arrayBuffer);
           } catch(e) {
-            this.showError(`Failed to download ${path}`, e);
+            this.showError('ERR-NET-DL-01', e);
             continue;
           }
         }
@@ -690,7 +710,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
           remoteContent = dec.decryptedStr;
           isBin = dec.decryptedIsBinary;
         } catch (err) {
-          this.showError(`Failed to decrypt inbound HTTP data for ${path}`, err);
+          this.showError('ERR-CRYPTO-DEC-02', err);
           continue;
         }
         
@@ -724,7 +744,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
               created++;
             }
           } catch(e) {
-            this.showError(`Failed to sync config file: ${path}`, e);
+            this.showError('ERR-FS-CONF-01', e);
           }
           continue;
         }
@@ -771,13 +791,12 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       }
       
       if (created > 0 || updated > 0) {
-        new Notice(`ObsidianApiSync Complete! Created: ${created}, Updated: ${updated}`);
+        ToastManager.showInfo(`Sync Complete! Created: ${created}, Updated: ${updated}`);
       } else {
-        new Notice('ObsidianApiSync Complete: Vault is up to date.');
+        ToastManager.showInfo('Sync Complete: Vault is up to date.');
       }
     } catch (err) {
-      this.showError("Pull failed:", err);
-      new Notice('ObsidianApiSync Failed. Check console.');
+      this.showError('ERR-NET-PULL-01', err);
     }
   }
 
@@ -817,8 +836,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     } catch (err) {
       const message =
         err instanceof Error ? err.message : String(err);
-      new Notice(`⚠️ ObsidianApiSync HTTP fallback failed${(err as any)?.status ? " [" + (err as any).status + "]" : ""}: ${message}`);
-      this.showError("HTTP fallback error:", err);
+      this.showError('ERR-NET-HTTP-01', err);
     }
   }
 
@@ -853,24 +871,27 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     }
   }
 
-  async httpFallbackWriteRaw(path: string, contentStr: string, isBinary: boolean = false): Promise<void> {
+  async httpFallbackWriteRaw(path: string, content: string | ArrayBuffer, isBinary: boolean = false): Promise<void> {
     try {
       const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-      let body: string | ArrayBuffer = contentStr;
+      const headers: Record<string, string> = {
+        Authorization: `Bearer ${this.settings.apiToken}`,
+      };
       if (isBinary) {
-          body = this.base64ToArrayBuffer(contentStr);
+        headers['Content-Type'] = 'application/octet-stream';
+        headers['X-Is-Binary'] = 'true';
+      } else {
+        headers['Content-Type'] = 'text/plain';
       }
+      
       await requestUrl({
         url: `${this.settings.serverUrl.replace(/\/$/, '')}/api/files/${encodedPath}`,
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.settings.apiToken}`,
-          'Content-Type': 'application/octet-stream',
-        },
-        body,
+        headers,
+        body: content,
       });
     } catch (err) {
-      this.showError("HTTP fallback raw error:", err);
+      this.showError('ERR-NET-HTTP-02', err);
     }
   }
 
@@ -903,9 +924,6 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   }
 
   showError(context: string, err: any): void {
-    console.error(`[ObsidianApiSync] ${context}:`, err);
-    const status = (err as any)?.status ? ` [${(err as any).status}]` : "";
-    const msg = err instanceof Error ? err.message : String(err);
-    new Notice(`❌ ObsidianApiSync: ${context}${status} - ${msg}`);
+    ToastManager.showError(context, err);
   }
 }

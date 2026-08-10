@@ -26,7 +26,7 @@ export const DEFAULT_SETTINGS: ObsidianApiSyncSettings = {
   excludeWorkspace: true,
   syncMode: 'include_all',
   selectiveSyncPaths: '',
-  allowedExtensions: 'md, canvas, pdf, png, jpg, jpeg, gif, webp, mp3, mp4',
+  allowedExtensions: 'md, canvas, pdf, png, jpg, jpeg, gif, webp, svg, mp3, mp4',
   fileHashes: {},
   encryptionPassword: '',
 };

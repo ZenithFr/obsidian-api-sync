@@ -250,7 +250,7 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     ts = _utcnow_iso()
                     # Broadcast to all OTHER clients (exclude sender to prevent echo)
                     await manager.broadcast(
-                        {"type": "FILE_CHANGED", "path": file_path, "content": content, "is_binary": is_binary, "source": "ws", "ts": ts},
+                        {"type": "FILE_CHANGED", "path": file_path, "content": None if is_binary else content, "is_binary": is_binary, "source": "ws", "ts": ts},
                         exclude=websocket,
                     )
                     await add_audit(method="WS", path=file_path, token_id=token_data["id"], action="WRITE")

@@ -417,6 +417,7 @@ async def write_file(
     request: Request,
     token_data: dict = Depends(get_current_token),
     x_base_hash: str | None = Header(None, alias="X-Base-Hash"),
+    x_is_binary: str | None = Header(None, alias="X-Is-Binary"),
 ) -> JSONResponse:
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
@@ -431,11 +432,14 @@ async def write_file(
         )
 
     is_binary = False
-    try:
-        content = body_bytes.decode("utf-8")
-    except UnicodeDecodeError:
+    content = None
+    if x_is_binary and x_is_binary.lower() == "true":
         is_binary = True
-        content = base64.b64encode(body_bytes).decode("ascii")
+    else:
+        try:
+            content = body_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            is_binary = True
 
     lock = await file_locks.acquire(str(target))
     async with lock:
@@ -475,7 +479,7 @@ async def write_file(
     ts = _utcnow_iso()
     # For binary files, we do not broadcast the content. The client will fetch it.
     await manager.broadcast(
-        {"type": "FILE_CHANGED", "path": path, "content": content, "is_binary": is_binary, "source": "rest", "ts": ts}
+        {"type": "FILE_CHANGED", "path": path, "content": None if is_binary else content, "is_binary": is_binary, "source": "rest", "ts": ts}
     )
 
     await add_audit(method="POST", path=path, token_id=token_data["id"], action="WRITE")

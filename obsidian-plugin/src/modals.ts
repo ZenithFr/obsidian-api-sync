@@ -1,6 +1,6 @@
-import { App, Modal, Notice, requestUrl, TFile, Setting } from 'obsidian';
+import { App, Modal, requestUrl, TFile } from 'obsidian';
 import type ObsidianApiSyncPlugin from './main';
-import { diffLines } from 'diff';
+import { ToastManager } from './utils';
 
 interface TrashedFile {
     ts: number;
@@ -74,12 +74,11 @@ export class TrashRecoveryModal extends Modal {
                 headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
             });
             if (resp.status === 200) {
-                new Notice(`Restored ${originalPath}`);
+                ToastManager.showInfo(`Restored ${originalPath}`);
                 this.plugin.pullAllFiles(); // pull changes to get the restored file
             }
         } catch (err) {
-            new Notice(`Failed to restore ${originalPath}`);
-            console.error(err);
+            ToastManager.showError('ERR-TRASH-RESTORE', err);
         }
     }
 
@@ -168,12 +167,11 @@ export class VersionHistoryModal extends Modal {
                 headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
             });
             if (resp.status === 200) {
-                new Notice(`Restored version of ${path}`);
+                ToastManager.showInfo(`Restored version of ${path}`);
                 this.plugin.pullAllFiles(); // pull changes to get the restored version
             }
         } catch (err) {
-            new Notice(`Failed to restore version of ${path}`);
-            console.error(err);
+            ToastManager.showError('ERR-VER-RESTORE', err);
         }
     }
 
@@ -226,10 +224,10 @@ export class ConflictModal extends Modal {
             btnRemote.textContent = 'Pulling...';
             try {
                 await this.plugin.pullAllFiles(); // Pulls the server version
-                new Notice(`Resolved conflict for ${this.conflictedPath} using Remote version.`);
+                ToastManager.showInfo(`Resolved conflict for ${this.conflictedPath} using Remote version.`);
                 this.close();
             } catch (err) {
-                new Notice(`Failed to pull remote file: ${err}`);
+                ToastManager.showError('ERR-FS-PULL-01', err);
                 btnRemote.disabled = false;
                 btnRemote.textContent = 'Keep Remote (Discard Local)';
             }
@@ -252,13 +250,13 @@ export class ConflictModal extends Modal {
                     }
                     const encrypted = await this.plugin.encryptPayloadIfNeeded(contentStr, isBinary);
                     this.plugin.wsClient.sendFileModifyForce(this.conflictedPath, encrypted.contentStr, encrypted.isBinary);
-                    new Notice(`Resolved conflict for ${this.conflictedPath} using Local version.`);
+                    ToastManager.showInfo(`Resolved conflict for ${this.conflictedPath} using Local version.`);
                     this.close();
                 } else {
-                    new Notice('Local file not found.');
+                    ToastManager.showError('ERR-FS-LOCAL-NOT-FOUND', 'Local file not found.');
                 }
             } catch (err) {
-                new Notice(`Failed to force local overwrite: ${err}`);
+                ToastManager.showError('ERR-FS-PUSH-01', err);
                 btnLocal.disabled = false;
                 btnLocal.textContent = 'Keep Local (Overwrite Remote)';
             }

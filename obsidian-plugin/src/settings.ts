@@ -1,5 +1,6 @@
-import { App, PluginSettingTab, Setting, Notice, requestUrl } from 'obsidian';
+import { App, PluginSettingTab, Setting, requestUrl } from 'obsidian';
 import { WsState } from './ws-client';
+import { ToastManager } from './utils';
 import type { QuickImportConfig } from './types';
 
 /**
@@ -137,7 +138,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
 
     importBtn.addEventListener('click', async () => {
       const raw = textarea.value.trim();
-      if (!raw) { new Notice('❌ Config string is empty'); return; }
+      if (!raw) { ToastManager.showError('ERR-CFG-01', 'Config string is empty'); return; }
       try {
         const decoded = atob(raw);
         const parsed = JSON.parse(decoded) as QuickImportConfig;
@@ -148,10 +149,10 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
         this.plugin.settings.apiToken = parsed.token;
         await this.plugin.saveSettings();
         textarea.value = '';
-        new Notice('✅ Config imported successfully');
+        ToastManager.showInfo('✅ Config imported successfully');
         this.display();
-      } catch {
-        new Notice('❌ Invalid config string');
+      } catch (err) {
+        ToastManager.showError('ERR-CFG-02', 'Invalid config string');
       }
     });
 
@@ -218,7 +219,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
       .addButton(btn =>
         btn.setButtonText('Connect').setCta().onClick(() => {
           if (!this.plugin.settings.serverUrl || !this.plugin.settings.apiToken) {
-            new Notice('❌ Please fill in Server URL and API Token first.');
+            ToastManager.showError('ERR-CFG-03', 'Please fill in Server URL and API Token first.');
             return;
           }
           this.plugin.connectWs();
@@ -333,7 +334,7 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
       .setDesc('Comma-separated list of extensions to sync. Leave blank to allow all. Example: "md, canvas, pdf, png"')
       .addText(text =>
         text
-          .setPlaceholder('md, canvas, pdf, png, jpg')
+          .setPlaceholder('md, canvas, pdf, png, jpg, svg')
           .setValue(this.plugin.settings.allowedExtensions)
           .onChange(async value => {
             this.plugin.settings.allowedExtensions = value;
@@ -389,23 +390,24 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
       .addButton(btn => 
         btn.setButtonText('Backup Now').setCta().onClick(async () => {
           if (!this.plugin.settings.serverUrl || !this.plugin.settings.apiToken) {
-            new Notice('❌ Please configure Connection tab first.');
+            ToastManager.showError('ERR-CFG-04', 'Please configure Connection tab first.');
             return;
           }
           btn.setDisabled(true);
-          new Notice('ObsidianApiSync: Creating snapshot...');
+          ToastManager.showInfo('Creating snapshot...');
           try {
             await requestUrl({
               url: `${this.plugin.settings.serverUrl.replace(/\/$/, '')}/api/snapshots/create`,
               method: 'POST',
               headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
             });
-            new Notice('✅ Snapshot created successfully!');
+            ToastManager.showInfo('✅ Snapshot created successfully!');
             // Re-render to show the new snapshot
             el.empty();
             this.renderRecoveryTab(el);
           } catch (e) {
-            new Notice('❌ Failed to create snapshot.');
+            console.error(e);
+            ToastManager.showError('ERR-NET-SNAP-01', 'Failed to create snapshot.');
             btn.setDisabled(false);
           }
         })
@@ -439,16 +441,18 @@ export class ObsidianApiSyncSettingTab extends PluginSettingTab {
             btn.onclick = async () => {
               if (confirm(`🚨 WARNING: This will completely WIPE your current vault and replace it with this snapshot (${date}). A safety backup will be taken automatically before wiping. Are you absolutely sure?`)) {
                 btn.disabled = true;
-                new Notice('ObsidianApiSync: Restoring vault from snapshot...');
+                ToastManager.showInfo('Restoring vault from snapshot...');
                 try {
-                  await requestUrl({
+                  const r = await requestUrl({
                     url: `${this.plugin.settings.serverUrl.replace(/\/$/, '')}/api/snapshots/restore/${snap.id}`,
                     method: 'POST',
                     headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
                   });
-                  new Notice('✅ Restore initiated! The vault will reload momentarily.');
+                  if (r.status === 200) {
+                    ToastManager.showInfo('✅ Restore initiated! The vault will reload momentarily.');
+                  }
                 } catch(e) {
-                  new Notice('❌ Failed to restore snapshot.');
+                  ToastManager.showError('ERR-NET-SNAP-02', 'Failed to restore snapshot.');
                   btn.disabled = false;
                 }
               }
