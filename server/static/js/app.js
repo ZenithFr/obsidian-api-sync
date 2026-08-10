@@ -224,13 +224,21 @@ function parseCallouts(html) {
 
 // Extended Task checkbox: - [ ], - [x], - [-], - [/], - [?], - [!]
 function parseTaskCheckboxes(html) {
-  return html
-    .replace(/<li>\s*\[ \]/g, '<li><input type="checkbox" disabled> ')
-    .replace(/<li>\s*\[[xX]\]/g, '<li><input type="checkbox" checked disabled> ')
-    .replace(/<li>\s*\[-\]/g, '<li><input type="checkbox" disabled class="task-cancelled"> ')
-    .replace(/<li>\s*\[\/\]/g, '<li><input type="checkbox" disabled class="task-in-progress"> ')
-    .replace(/<li>\s*\[\?\]/g, '<li><input type="checkbox" disabled class="task-question"> ')
-    .replace(/<li>\s*\[!\]/g, '<li><input type="checkbox" disabled class="task-important"> ');
+  let taskId = 0;
+  return html.replace(/<li>\s*\[( |[xX]|-|\/|\?|!)\]/g, (match, state) => {
+    taskId++;
+    const id = `task-${taskId}-${Math.random().toString(36).substr(2, 5)}`;
+    let checked = '';
+    let cls = '';
+
+    if (state.toLowerCase() === 'x') checked = 'checked ';
+    if (state === '-') cls = 'class="task-cancelled" ';
+    if (state === '/') cls = 'class="task-in-progress" ';
+    if (state === '?') cls = 'class="task-question" ';
+    if (state === '!') cls = 'class="task-important" ';
+
+    return `<li><input type="checkbox" id="${id}" ${checked}${cls}disabled aria-label="Task checkbox"><label for="${id}" class="sr-only">Task</label> `;
+  });
 }
 
 // Protect math blocks before Marked processes them, then restore
