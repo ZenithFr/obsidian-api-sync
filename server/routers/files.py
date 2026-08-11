@@ -66,14 +66,7 @@ def _sanitize_path(vault_path: str, relative_path: str) -> Path:
     return target
 
 
-def _fnv1a(content: str) -> str:
-    """FNV-1a 32-bit hash — matches the TypeScript client exactly.
-    Used for conflict detection only; not a security primitive."""
-    h = 0x811c9dc5
-    for ch in content.encode("utf-8", errors="replace"):
-        h ^= ch
-        h = (h * 0x01000193) & 0xFFFFFFFF
-    return format(h, '08x')
+from hashing import fnv1a as _fnv1a
 
 
 # -- GET /api/files -----------------------------------------------------------
@@ -155,8 +148,8 @@ async def list_files(
                     # Binary file
                     raw_bytes = await asyncio.to_thread(file.read_bytes)
                     b64_content = base64.b64encode(raw_bytes).decode("ascii")
-                    # Only send content if < 1MB, otherwise force client to download separately
-                    if size > 1024 * 1024:
+                    # Only send content if small, otherwise force client to download separately
+                    if size > settings.MAX_INLINE_BINARY_BYTES:
                         md_files.append({"path": relative, "content": None, "is_binary": True, "size_bytes": size, "hash": ""})
                     else:
                         md_files.append({"path": relative, "content": b64_content, "is_binary": True, "size_bytes": size, "hash": ""})
@@ -206,6 +199,11 @@ async def read_file(
     path: str,
     token_data: dict = Depends(get_current_token),
 ) -> FileResponse:
+    # The generic /{path:path} route is registered before /download/{path:path},
+    # so FastAPI hands download/... requests to this handler. Route them on.
+    if path.startswith("download/"):
+        return await download_file(path[len("download/"):], token_data)
+
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
 
@@ -418,7 +416,18 @@ async def write_file(
     token_data: dict = Depends(get_current_token),
     x_base_hash: str | None = Header(None, alias="X-Base-Hash"),
     x_is_binary: str | None = Header(None, alias="X-Is-Binary"),
+    x_force_overwrite: str | None = Header(None, alias="X-Force-Overwrite"),
 ) -> JSONResponse:
+    # The generic /{path:path} route is registered before /rename, so FastAPI
+    # hands rename/... requests to this handler. Route them on.
+    if path.startswith("rename"):
+        import json as _json
+        try:
+            payload = RenamePayload.model_validate(_json.loads(await request.body()))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid rename payload: {exc}")
+        return await rename_file(request, payload, token_data)
+
     vault_path = await get_vault_path()
     target = _sanitize_path(vault_path, path)
 
@@ -443,24 +452,66 @@ async def write_file(
 
     lock = await file_locks.acquire(str(target))
     async with lock:
-        # Conflict detection
+        # Conflict detection and automatic resolution based on config
         if target.exists() and x_base_hash and not is_binary:
             try:
                 current_text = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
                 current_hash = _fnv1a(current_text)
                 if current_hash != x_base_hash:
-                    return JSONResponse(
-                        status_code=409,
-                        content={
-                            "type": "CONFLICT",
-                            "path": path,
-                            "server_content": current_text,
-                            "client_content": content,
-                        }
-                    )
+                    resolution = settings.CONFLICT_RESOLUTION.lower()
+                    if resolution == "client":
+                        # Client wins – overwrite without conflict
+                        pass
+                    elif resolution == "server":
+                        # Server wins – reject client change, return server content
+                        return JSONResponse(
+                            status_code=409,
+                            content={
+                                "type": "CONFLICT",
+                                "path": path,
+                                "server_content": current_text,
+                                "client_content": content,
+                            }
+                        )
+                    else:
+                        # Fallback to explicit force overwrite header if provided
+                        if x_force_overwrite and x_force_overwrite.lower() == "true":
+                            pass
+                        else:
+                            return JSONResponse(
+                                status_code=409,
+                                content={
+                                    "type": "CONFLICT",
+                                    "path": path,
+                                    "server_content": current_text,
+                                    "client_content": content,
+                                }
+                            )
             except OSError:
                 pass  # Proceed if read fails
-    
+        # Conflict detection for write to a file that is in trash
+        trash_path = Path(vault_path) / ".sync_trash" / path
+        if trash_path.exists():
+            resolution = settings.CONFLICT_RESOLUTION.lower()
+            if resolution == "server":
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "type": "CONFLICT",
+                        "path": path,
+                        "detail": "File has been deleted on server.",
+                    }
+                )
+            # client/manual: only allow resurrection when force header is set
+            if not (x_force_overwrite and x_force_overwrite.lower() == "true"):
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "type": "CONFLICT",
+                        "path": path,
+                        "detail": "File is in trash. Use X-Force-Overwrite: true to restore.",
+                    }
+                )
         # Save version before modifying existing file
         if target.exists():
             await asyncio.to_thread(save_version, Path(vault_path), path)

@@ -27,7 +27,7 @@ from config import settings
 from database import add_audit, get_vault_path
 from locks import file_locks
 from version_control import _get_versions_dir, move_to_trash, save_version
-from routers.files import _fnv1a
+from hashing import fnv1a as _fnv1a
 
 logger = logging.getLogger(__name__)
 
@@ -209,16 +209,37 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                     lock = await file_locks.acquire(str(target_file))
                     async with lock:
                         if target_file.exists():
+                            conflict = False
                             if not is_binary:
                                 base_hash: str | None = payload.get("base_hash")
                                 if base_hash:
                                     current_content = await asyncio.to_thread(target_file.read_text, encoding="utf-8", errors="replace")
                                     current_hash = _fnv1a(current_content)
                                     if current_hash != base_hash:
-                                        mtime_ts = int(target_file.stat().st_mtime * 1000)
-                                        await websocket.send_json({"type": "ERROR", "code": "CONFLICT", "message": "File modified on server.", "path": file_path, "server_mtime": mtime_ts})
-                                        continue
+                                        resolution = settings.CONFLICT_RESOLUTION.lower()
+                                        if resolution == "client":
+                                            conflict = False  # client wins – overwrite
+                                        elif resolution == "server":
+                                            conflict = True
+                                        else:
+                                            conflict = True
+                                        if conflict:
+                                            mtime_ts = int(target_file.stat().st_mtime * 1000)
+                                            await websocket.send_json({"type": "ERROR", "code": "CONFLICT", "message": "File modified on server.", "path": file_path, "server_mtime": mtime_ts})
+                                            continue
                             await asyncio.to_thread(save_version, Path(vault_path), file_path)
+                        else:
+                            # File does not exist – check trash for resurrection
+                            trash_candidate = Path(vault_path) / ".sync_trash" / file_path
+                            if trash_candidate.exists():
+                                resolution = settings.CONFLICT_RESOLUTION.lower()
+                                if resolution == "server":
+                                    await websocket.send_json({"type": "ERROR", "code": "CONFLICT", "message": "File has been deleted on server.", "path": file_path})
+                                    continue
+                                # client/manual: only allow resurrection when explicit force
+                                if not payload.get("force", False):
+                                    await websocket.send_json({"type": "ERROR", "code": "CONFLICT", "message": "File is in trash. Send with force=true to resurrect.", "path": file_path})
+                                    continue
         
                         target_file.parent.mkdir(parents=True, exist_ok=True)
                         

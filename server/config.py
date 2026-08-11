@@ -46,7 +46,15 @@ class Settings(BaseSettings):
     # Max size of a single file write (REST or WebSocket), in bytes.
     MAX_FILE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
 
-    # Persistence
+    # Binaries under this size are sent inline as base64 in bulk listings;
+    # larger ones are listed with content=None and clients fetch them
+    # individually via /api/files/download/{path}. Keeps the bulk pull
+    # payload small enough for low-memory clients (mobile Obsidian).
+    MAX_INLINE_BINARY_BYTES: int = 64 * 1024  # 64 KB
+
+    # Conflict resolution policy: 'client' (client wins) or 'server' (server wins)
+    CONFLICT_RESOLUTION: str = "client"
+
     # Defaults are absolute paths anchored to the server/ directory so the
     # process produces the same result regardless of its working directory.
     # Values supplied in .env are accepted as-is and resolved in database.py.
