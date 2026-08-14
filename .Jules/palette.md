@@ -13,3 +13,7 @@
 ## 2024-11-20 - Explicit Labeling vs ARIA Labels and sr-only classes
 **Learning:** Form inputs and checkboxes often have either a `placeholder` or an explicit `<label for="...">`, but for full accessibility compliance (especially in dynamic/styled forms), explicitly pairing `aria-label` along with visually hidden `sr-only` labels (if no visual label exists) is required. This ensures proper interaction for all screen reader variants.
 **Action:** When updating form inputs or rendering dynamic checkboxes (e.g., Markdown task lists), always ensure they have an explicit `aria-label` AND a paired `<label for="...">` tag (using `.sr-only` if it must be visually hidden).
+
+## 2026-08-14 - Native disabled state vs runtime error feedback
+**Learning:** Relying on toast notifications to tell a user they cannot perform an action (like copying an empty payload) creates a frustrating UX loop. Natively disabling the action button (`disabled` attribute) until prerequisites are met provides immediate, intuitive feedback and prevents erroneous interactions entirely.
+**Action:** Always prefer native HTML `disabled` attributes and corresponding visual cues (like `opacity-50 cursor-not-allowed`) for actions that require prerequisites, rather than allowing the click and relying on error toasts.
