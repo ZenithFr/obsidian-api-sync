@@ -389,9 +389,9 @@
         <div class="flex-1 w-full space-y-1.5">
           <label for="vault-path-input" class="block text-xs font-medium text-muted">Update Path</label>
           <input id="vault-path-input" type="text" placeholder="/absolute/path/to/vault"
-                 class="input w-full font-mono text-xs" />
+                 class="input w-full font-mono text-xs" oninput="updateVaultPathBtnState()" />
         </div>
-        <button onclick="updateVaultPath()" class="btn-secondary sm:w-auto w-full btn-shimmer">
+        <button id="vault-path-save-btn" onclick="updateVaultPath()" class="btn-secondary sm:w-auto w-full btn-shimmer opacity-50 cursor-not-allowed" disabled>
           Save Changes
         </button>
       </div>
@@ -534,7 +534,7 @@
                       placeholder="Select or paste a token to generate..."></textarea>
           </div>
 
-          <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary btn-shimmer w-full">
+          <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary btn-shimmer w-full opacity-50 cursor-not-allowed" disabled>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
             <span id="copy-config-label">Copy Payload</span>
           </button>
@@ -765,10 +765,21 @@ function switchTab(name) {
 
 /* ── Vault ────────────────────────────────────────────────────── */
 
+function updateVaultPathBtnState() {
+  const input = document.getElementById('vault-path-input');
+  const btn = document.getElementById('vault-path-save-btn');
+  if (input.value.trim() === '') {
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+  }
+}
+
 async function updateVaultPath() {
   const input = document.getElementById('vault-path-input');
   const path = input.value.trim();
-  if (!path) { showToast('Please enter a directory path.', 'error'); return; }
   try {
     const res = await fetch('/dashboard/vault-path', {
       method: 'POST',
@@ -779,6 +790,7 @@ async function updateVaultPath() {
     if (!res.ok) throw new Error(data.detail || 'Failed to update path');
     document.getElementById('current-vault-path').textContent = data.vault_path;
     input.value = '';
+    updateVaultPathBtnState();
     showToast('Vault directory path updated successfully.');
   } catch (err) { showToast(err.message, 'error'); }
 }
@@ -920,15 +932,28 @@ function updateConnectConfig() {
   const sel = document.getElementById('connect-token-select');
   const man = document.getElementById('connect-token-manual');
   const out = document.getElementById('connect-config-output');
+  const btn = document.getElementById('copy-config-btn');
   const token = sel.value || man.value.trim();
-  if (!token) { out.value = ''; return; }
+  if (!token) {
+    out.value = '';
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+    return;
+  }
   const config = { server: window.location.origin, token };
-  try { out.value = btoa(unescape(encodeURIComponent(JSON.stringify(config)))); } catch(e) { out.value = 'Invalid characters in token'; }
+  try {
+    out.value = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
+    btn.disabled = false;
+    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+  } catch(e) {
+    out.value = 'Invalid characters in token';
+    btn.disabled = true;
+    btn.classList.add('opacity-50', 'cursor-not-allowed');
+  }
 }
 
 function copyConnectConfig() {
   const out = document.getElementById('connect-config-output');
-  if (!out.value) { showToast('Generate a payload first by selecting a token.', 'error'); return; }
   navigator.clipboard.writeText(out.value).then(() => {
     const label = document.getElementById('copy-config-label');
     label.textContent = '✓ Copied!';
