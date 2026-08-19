@@ -1227,7 +1227,7 @@ function showInputModal(title, message, defaultValue, confirmLabel = 'OK') {
         <h3 class="text-sm font-semibold text-on-surface mb-2">${escapeHtml(title)}</h3>
         <p class="text-xs text-muted mb-4">${escapeHtml(message)}</p>
         <label for="modal-input" class="sr-only">${escapeHtml(title)}</label>
-        <input type="text" class="input w-full mb-4" id="modal-input" value="${escapeHtml(defaultValue)}" aria-label="${escapeHtml(title)}" />
+        <input type="text" class="input w-full mb-4" id="modal-input" value="${escapeHtml(defaultValue)}" />
         <div class="flex gap-2 justify-end">
           <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
           <button class="btn btn-primary" id="modal-confirm">${escapeHtml(confirmLabel)}</button>
