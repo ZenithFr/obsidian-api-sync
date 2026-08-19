@@ -12,6 +12,9 @@ import {
   FolderCreatePayload,
   VaultRestoredPayload,
   OutboundPayload,
+  SmartSyncRequestPayload,
+  SmartSyncResponsePayload,
+  FilePullRequestPayload,
 } from './types';
 import { fnv1a } from './utils';
 
@@ -44,6 +47,7 @@ export class ObsidianApiSyncWsClient {
   public onFileRenamed?: (payload: FileRenamedPayload) => void;
   public onFolderCreated?: (payload: FolderCreatedPayload) => void;
   public onVaultRestored?: (payload: VaultRestoredPayload) => void;
+  public onSmartSyncResponse?: (payload: SmartSyncResponsePayload) => void;
   public onStateChange: ((state: WsState) => void) | null = null;
   public onConnected: ((clientId: string) => void) | null = null;
   public onError: ((payload: ErrorPayload) => void) | null = null;
@@ -185,6 +189,31 @@ export class ObsidianApiSyncWsClient {
       this.enqueue(payload);
     }
     if (!is_binary) {
+    }
+  }
+
+  /**
+   * Send a SMART_SYNC_REQUEST to the server on connect.
+   * The server will classify each file and respond with SMART_SYNC_RESPONSE.
+   */
+  sendSmartSyncRequest(
+    files: Array<{ path: string; client_mtime_ms: number; hash: string }>
+  ): void {
+    const payload: SmartSyncRequestPayload = { type: 'SMART_SYNC_REQUEST', files };
+    if (this.state === WsState.CONNECTED && this.ws) {
+      this.rawSend(payload);
+    }
+    // Don't queue smart sync — it's a one-shot handshake tied to a specific connection.
+  }
+
+  /**
+   * Request a single file's content be pushed back over WS by the server.
+   * The server responds with a FILE_CHANGED payload.
+   */
+  sendFilePullRequest(path: string): void {
+    const payload: FilePullRequestPayload = { type: 'FILE_PULL_REQUEST', path };
+    if (this.state === WsState.CONNECTED && this.ws) {
+      this.rawSend(payload);
     }
   }
 
@@ -331,6 +360,13 @@ export class ObsidianApiSyncWsClient {
       case 'ERROR':
         if (this.onError) {
           this.onError(payload);
+        }
+        break;
+      case 'SMART_SYNC_RESPONSE':
+        if (this.onSmartSyncResponse) {
+          Promise.resolve(
+            this.onSmartSyncResponse(payload as SmartSyncResponsePayload)
+          ).catch(console.error);
         }
         break;
       case 'NO_UPDATE_NEEDED':

@@ -24,7 +24,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from auth import verify_ws_token
 from config import settings
-from database import add_audit, get_vault_path
+from database import add_audit, get_vault_path, upsert_ledger, get_all_ledger
 from locks import file_locks
 from version_control import _get_versions_dir, move_to_trash, save_version
 from hashing import fnv1a as _fnv1a
@@ -176,14 +176,117 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
             if msg_type == "PONG":
                 continue
 
-            if msg_type not in ("FILE_MODIFY", "FILE_DELETE", "FILE_RENAME", "FOLDER_CREATE"):
+            if msg_type not in ("FILE_MODIFY", "FILE_DELETE", "FILE_RENAME", "FOLDER_CREATE",
+                                "SMART_SYNC_REQUEST", "FILE_PULL_REQUEST"):
                 await websocket.send_json({
                     "type": "ERROR", "code": "UNKNOWN_TYPE",
                     "message": f"Unknown message type: '{msg_type}'.",
                 })
                 continue
 
-            # Validate path present
+            # SMART_SYNC_REQUEST carries no top-level path — it embeds paths in its own list.
+            # Handle it early before the single-path validation below.
+            if msg_type == "SMART_SYNC_REQUEST":
+                vault_path = await get_vault_path()
+                try:
+                    # Inline the handler here to avoid the path-required guard below
+                    client_files = payload.get("files", [])
+                    ledger = await get_all_ledger()
+                    vault_root = Path(vault_path)
+
+                    pull_paths: list[str] = []
+                    push_paths: list[str] = []
+                    conflict_entries: list[dict] = []
+                    ok_paths: list[str] = []
+                    client_path_set: set[str] = set()
+
+                    for entry in client_files:
+                        p = entry.get("path", "")
+                        if not p:
+                            continue
+                        client_mtime_ms: int = int(entry.get("client_mtime_ms", 0))
+                        client_hash: str = entry.get("hash", "")
+                        client_path_set.add(p)
+
+                        try:
+                            target = _sanitize_path(vault_path, p)
+                        except ValueError:
+                            continue
+
+                        if not target.exists() or not target.is_file():
+                            push_paths.append(p)
+                            continue
+
+                        server_mtime_ms = int(target.stat().st_mtime * 1000)
+                        ledger_entry = ledger.get(p)
+
+                        if ledger_entry is None:
+                            # Never synced — compare hash
+                            try:
+                                cur = await asyncio.to_thread(target.read_text, encoding="utf-8", errors="replace")
+                                if client_hash and client_hash == _fnv1a(cur):
+                                    ok_paths.append(p)
+                                else:
+                                    try:
+                                        await asyncio.to_thread(target.read_text, encoding="utf-8")
+                                        conflict_entries.append({"path": p, "server_mtime_ms": server_mtime_ms})
+                                    except UnicodeDecodeError:
+                                        pull_paths.append(p)
+                            except Exception:
+                                pull_paths.append(p)
+                            continue
+
+                        client_changed = client_mtime_ms > ledger_entry["synced_at_ms"]
+                        server_changed = server_mtime_ms > ledger_entry["server_mtime_ms"]
+
+                        if not client_changed and not server_changed:
+                            ok_paths.append(p)
+                        elif client_changed and not server_changed:
+                            push_paths.append(p)
+                        elif server_changed and not client_changed:
+                            pull_paths.append(p)
+                        else:
+                            is_bin = False
+                            try:
+                                await asyncio.to_thread(target.read_text, encoding="utf-8")
+                            except UnicodeDecodeError:
+                                is_bin = True
+                            if is_bin:
+                                pull_paths.append(p)
+                            else:
+                                conflict_entries.append({"path": p, "server_mtime_ms": server_mtime_ms})
+
+                    # Server-only files → client should pull
+                    try:
+                        for f in vault_root.rglob("*"):
+                            if not f.is_file():
+                                continue
+                            try:
+                                rel_parts = f.relative_to(vault_root).parts
+                            except ValueError:
+                                continue
+                            if any(pt.startswith(".") and pt not in (".obsidian",) for pt in rel_parts):
+                                continue
+                            rel = "/".join(rel_parts)
+                            if rel not in client_path_set and rel not in pull_paths:
+                                pull_paths.append(rel)
+                    except Exception as scan_err:
+                        logger.warning("Smart sync vault scan failed: %s", scan_err)
+
+                    await websocket.send_json({
+                        "type": "SMART_SYNC_RESPONSE",
+                        "pull": pull_paths,
+                        "push": push_paths,
+                        "conflicts": conflict_entries,
+                        "ok": ok_paths,
+                    })
+                    await add_audit(method="WS", path=None, token_id=token_data["id"], action="SMART_SYNC")
+                except Exception as e:
+                    logger.error("SMART_SYNC_REQUEST failed: %s", e)
+                    await websocket.send_json({"type": "ERROR", "code": "SMART_SYNC_ERROR", "message": str(e)})
+                continue
+
+            # Validate path present (required for all other message types)
             file_path: str | None = payload.get("path")
             if not file_path:
                 await websocket.send_json({"type": "ERROR", "code": "INVALID_PAYLOAD", "message": "'path' is required."})
@@ -269,6 +372,12 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                                 continue
                         
                     ts = _utcnow_iso()
+                    # Record the confirmed sync point in the ledger
+                    try:
+                        server_mtime_ms = int(target_file.stat().st_mtime * 1000)
+                        await upsert_ledger(file_path, server_mtime_ms)
+                    except Exception:
+                        pass
                     # Broadcast to all OTHER clients (exclude sender to prevent echo)
                     await manager.broadcast(
                         {"type": "FILE_CHANGED", "path": file_path, "content": None if is_binary else content, "is_binary": is_binary, "source": "ws", "ts": ts},
@@ -328,6 +437,31 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
                         exclude=websocket,
                     )
                     await add_audit(method="WS", path=f"{file_path} -> {new_path}", token_id=token_data["id"], action="RENAME")
+
+
+                # -- FILE_PULL_REQUEST --------------------------------------------
+                elif msg_type == "FILE_PULL_REQUEST":
+                    if not target_file.exists() or not target_file.is_file():
+                        await websocket.send_json({
+                            "type": "ERROR", "code": "FILE_NOT_FOUND",
+                            "message": f"File not found: {file_path}", "path": file_path,
+                        })
+                        continue
+                    try:
+                        pull_content = await asyncio.to_thread(target_file.read_text, encoding="utf-8", errors="replace")
+                        pull_is_binary = False
+                    except UnicodeDecodeError:
+                        raw_bytes = await asyncio.to_thread(target_file.read_bytes)
+                        pull_content = base64.b64encode(raw_bytes).decode("ascii")
+                        pull_is_binary = True
+                    await websocket.send_json({
+                        "type": "FILE_CHANGED",
+                        "path": file_path,
+                        "content": pull_content,
+                        "is_binary": pull_is_binary,
+                        "source": "ws",
+                        "ts": _utcnow_iso(),
+                    })
 
                 # -- FOLDER_CREATE ------------------------------------------------
                 elif msg_type == "FOLDER_CREATE":

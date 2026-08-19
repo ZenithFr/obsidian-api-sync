@@ -196,44 +196,91 @@ export class ConflictModal extends Modal {
         this.onResolve = onResolve;
     }
 
-    onOpen() {
+    async onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        contentEl.createEl('h2', { text: 'Sync Conflict Detected' });
+        contentEl.createEl('h2', { text: '⚠️ Sync Conflict Detected' });
 
         let timeText = '';
         if (this.serverMtime) {
             const date = new Date(this.serverMtime);
-            // Format to IST
             const istTime = date.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'medium' });
             timeText = ` at ${istTime} (IST)`;
         }
 
-        contentEl.createEl('p', { 
-            text: `The file "${this.conflictedPath}" was modified on the server${timeText} while you were disconnected. Your local changes could not be synced because they would overwrite the newer server version.` 
+        contentEl.createEl('p', {
+            text: `"${this.conflictedPath}" was edited on both the server${timeText} and locally since the last sync. Choose which version to keep.`
         });
 
-        const btnContainer = contentEl.createDiv({ cls: 'conflict-buttons' });
-        btnContainer.style.display = 'flex';
-        btnContainer.style.gap = '10px';
-        btnContainer.style.marginTop = '20px';
+        // ── Fetch both versions for diff ────────────────────────────────────
+        let serverContent = '';
+        let localContent = '';
+        let fetchError = false;
 
-        const btnRemote = btnContainer.createEl('button', { text: 'Keep Remote (Discard Local)' });
+        try {
+            const encodedPath = this.conflictedPath.split('/').map(encodeURIComponent).join('/');
+            const resp = await requestUrl({
+                url: `${this.plugin.settings.serverUrl.replace(/\/$/, '')}/api/files/${encodedPath}`,
+                headers: { Authorization: `Bearer ${this.plugin.settings.apiToken}` }
+            });
+            serverContent = resp.text || '';
+        } catch {
+            fetchError = true;
+        }
+
+        const localFile = this.app.vault.getAbstractFileByPath(this.conflictedPath);
+        if (localFile instanceof TFile && !this.plugin.isBinaryFile(this.conflictedPath)) {
+            try {
+                localContent = await this.app.vault.read(localFile);
+            } catch {
+                fetchError = true;
+            }
+        }
+
+        // ── Side-by-side diff ───────────────────────────────────────────────
+        if (!fetchError && serverContent && localContent) {
+            const diffWrapper = contentEl.createDiv({ cls: 'conflict-diff-wrapper' });
+            diffWrapper.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;max-height:360px;overflow-y:auto;';
+
+            const serverCol = diffWrapper.createDiv({ cls: 'conflict-col' });
+            const localCol  = diffWrapper.createDiv({ cls: 'conflict-col' });
+
+            serverCol.style.cssText = 'background:var(--background-secondary);border-radius:6px;padding:10px;overflow-x:auto;';
+            localCol.style.cssText  = serverCol.style.cssText;
+
+            serverCol.createEl('h4', { text: '🖥 Server version' }).style.cssText = 'margin:0 0 6px;font-size:12px;opacity:.7;';
+            localCol.createEl('h4',  { text: '💻 Your version'   }).style.cssText = 'margin:0 0 6px;font-size:12px;opacity:.7;';
+
+            // Line-by-line diff using LCS approach (no external dep)
+            const serverLines = serverContent.split('\n');
+            const localLines  = localContent.split('\n');
+
+            ConflictModal.renderLineDiff(serverLines, localLines, serverCol, localCol);
+        } else if (!fetchError) {
+            contentEl.createEl('p', { text: '(Binary file — cannot show diff. Choose which version to keep.)' })
+                .style.cssText = 'opacity:.6;font-style:italic;';
+        }
+
+        // ── Action buttons ──────────────────────────────────────────────────
+        const btnContainer = contentEl.createDiv({ cls: 'conflict-buttons' });
+        btnContainer.style.cssText = 'display:flex;gap:10px;margin-top:12px;';
+
+        const btnRemote = btnContainer.createEl('button', { text: 'Keep Server Version' });
         btnRemote.onclick = async () => {
             btnRemote.disabled = true;
             btnRemote.textContent = 'Pulling...';
             try {
-                await this.plugin.pullAllFiles(); // Pulls the server version
-                ToastManager.showInfo(`Resolved conflict for ${this.conflictedPath} using Remote version.`);
+                await this.plugin.pullAllFiles();
+                ToastManager.showInfo(`Resolved: kept server version of ${this.conflictedPath}.`);
                 this.close();
             } catch (err) {
                 ToastManager.showError('ERR-FS-PULL-01', err);
                 btnRemote.disabled = false;
-                btnRemote.textContent = 'Keep Remote (Discard Local)';
+                btnRemote.textContent = 'Keep Server Version';
             }
         };
 
-        const btnLocal = btnContainer.createEl('button', { text: 'Keep Local (Overwrite Remote)', cls: 'mod-warning' });
+        const btnLocal = btnContainer.createEl('button', { text: 'Keep My Version', cls: 'mod-warning' });
         btnLocal.onclick = async () => {
             btnLocal.disabled = true;
             btnLocal.textContent = 'Pushing...';
@@ -250,7 +297,7 @@ export class ConflictModal extends Modal {
                     }
                     const encrypted = await this.plugin.encryptPayloadIfNeeded(contentStr, isBinary);
                     this.plugin.wsClient.sendFileModifyForce(this.conflictedPath, encrypted.contentStr, encrypted.isBinary);
-                    ToastManager.showInfo(`Resolved conflict for ${this.conflictedPath} using Local version.`);
+                    ToastManager.showInfo(`Resolved: kept local version of ${this.conflictedPath}.`);
                     this.close();
                 } else {
                     ToastManager.showError('ERR-FS-LOCAL-NOT-FOUND', 'Local file not found.');
@@ -258,9 +305,72 @@ export class ConflictModal extends Modal {
             } catch (err) {
                 ToastManager.showError('ERR-FS-PUSH-01', err);
                 btnLocal.disabled = false;
-                btnLocal.textContent = 'Keep Local (Overwrite Remote)';
+                btnLocal.textContent = 'Keep My Version';
             }
         };
+    }
+
+    /** Render a simple line-diff between two string arrays into two columns. */
+    private static renderLineDiff(
+        aLines: string[],
+        bLines: string[],
+        aEl: HTMLElement,
+        bEl: HTMLElement
+    ): void {
+        // Build LCS length table
+        const m = aLines.length;
+        const n = bLines.length;
+        const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+        for (let i = 1; i <= m; i++) {
+            for (let j = 1; j <= n; j++) {
+                dp[i][j] = aLines[i - 1] === bLines[j - 1]
+                    ? dp[i - 1][j - 1] + 1
+                    : Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+
+        // Back-trace to build diff operations
+        type Op = { op: '=' | '-' | '+'; line: string };
+        const aDiff: Op[] = [];
+        const bDiff: Op[] = [];
+        let i = m, j = n;
+        while (i > 0 || j > 0) {
+            if (i > 0 && j > 0 && aLines[i - 1] === bLines[j - 1]) {
+                aDiff.unshift({ op: '=', line: aLines[i - 1] });
+                bDiff.unshift({ op: '=', line: bLines[j - 1] });
+                i--; j--;
+            } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+                bDiff.unshift({ op: '+', line: bLines[j - 1] });
+                aDiff.unshift({ op: '-', line: '' }); // placeholder for alignment
+                j--;
+            } else {
+                aDiff.unshift({ op: '-', line: aLines[i - 1] });
+                bDiff.unshift({ op: '+', line: '' }); // placeholder for alignment
+                i--;
+            }
+        }
+
+        const pre = (el: HTMLElement) => {
+            const p = el.createEl('pre');
+            p.style.cssText = 'margin:0;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;';
+            return p;
+        };
+        const aContainer = pre(aEl);
+        const bContainer = pre(bEl);
+
+        for (let k = 0; k < aDiff.length; k++) {
+            const aOp = aDiff[k];
+            const bOp = bDiff[k];
+
+            const aSpan = aContainer.createEl('span', { text: aOp.line + '\n' });
+            const bSpan = bContainer.createEl('span', { text: bOp.line + '\n' });
+
+            if (aOp.op === '-' && aOp.line !== '') {
+                aSpan.style.cssText = 'background:rgba(255,80,80,.25);display:block;';
+            } else if (bOp.op === '+' && bOp.line !== '') {
+                bSpan.style.cssText = 'background:rgba(80,200,80,.2);display:block;';
+            }
+        }
     }
 
     onClose() {

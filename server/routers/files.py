@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from auth import get_current_token
 from config import settings
-from database import add_audit, get_vault_path
+from database import add_audit, get_vault_path, upsert_ledger
 from limiter import limiter
 from locks import file_locks
 from routers.ws import manager
@@ -390,6 +390,10 @@ async def commit_chunked_upload(
     )
 
     await add_audit(method="POST", path=payload.path, token_id=token_data["id"], action="WRITE_CHUNKED")
+    try:
+        await upsert_ledger(payload.path, int(target.stat().st_mtime * 1000))
+    except Exception:
+        pass
 
     return JSONResponse(content={"path": payload.path, "status": "written", "size_bytes": size_bytes})
 
@@ -534,6 +538,11 @@ async def write_file(
     )
 
     await add_audit(method="POST", path=path, token_id=token_data["id"], action="WRITE")
+    try:
+        server_mtime_ms = int(target.stat().st_mtime * 1000)
+        await upsert_ledger(path, server_mtime_ms)
+    except Exception:
+        pass  # Ledger is best-effort; don't fail the write on ledger errors
 
     return JSONResponse(content={"path": path, "status": "written", "size_bytes": size_bytes, "is_binary": is_binary})
 

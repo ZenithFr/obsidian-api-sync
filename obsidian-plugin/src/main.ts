@@ -373,7 +373,63 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
     this.wsClient.onConnected = (clientId: string) => {
       console.log(`[ObsidianApiSync] Connected. Client ID: ${clientId}`);
-      this.pullAllFiles();
+      this.smartSync();
+    };
+
+    this.wsClient.onSmartSyncResponse = async (payload) => {
+      let pulled = 0, pushed = 0;
+
+      // Files server is newer on → request them over WS
+      for (const path of payload.pull) {
+        if (!this.shouldSyncPath(path, false)) continue;
+        this.wsClient.sendFilePullRequest(path);
+        // The FILE_CHANGED response is handled by onFileChanged
+        pulled++;
+      }
+
+      // Files client is newer on → push them to server
+      for (const path of payload.push) {
+        if (!this.shouldSyncPath(path, false)) continue;
+        const file = this.app.vault.getAbstractFileByPath(path);
+        if (file instanceof TFile) {
+          const isBinary = this.isBinaryFile(file.path);
+          if (isBinary) {
+            const buffer = await this.app.vault.readBinary(file);
+            const encrypted = await this.encryptBinaryBufferIfNeeded(buffer);
+            await this.httpFallbackWriteRaw(file.path, encrypted, true);
+          } else {
+            const content = await this.app.vault.read(file);
+            const encrypted = await this.encryptPayloadIfNeeded(content, false);
+            if (encrypted.contentStr.length > 2 * 1024 * 1024) {
+              await this.uploadChunked(file.path, encrypted.contentStr, false);
+            } else {
+              this.wsClient.sendFileModify(file.path, encrypted.contentStr, false);
+            }
+          }
+          pushed++;
+        }
+      }
+
+      // True text conflicts → open ConflictModal (side-by-side diff)
+      for (const { path, server_mtime_ms } of payload.conflicts) {
+        if (this.activeConflicts.has(path)) continue;
+        this.activeConflicts.add(path);
+        this.wsClient.clearQueueForPath(path);
+        new ConflictModal(this.app, this, path, server_mtime_ms, () => {
+          this.activeConflicts.delete(path);
+        }).open();
+      }
+
+      const total = pulled + pushed + payload.conflicts.length;
+      if (total === 0) {
+        ToastManager.showInfo('Sync Complete: Vault is up to date.');
+      } else {
+        const parts = [];
+        if (pulled > 0)  parts.push(`Pulled: ${pulled}`);
+        if (pushed > 0)  parts.push(`Pushed: ${pushed}`);
+        if (payload.conflicts.length > 0) parts.push(`Conflicts: ${payload.conflicts.length}`);
+        ToastManager.showInfo(`Sync Complete! ${parts.join(', ')}`);
+      }
     };
 
     this.wsClient.onError = (payload) => {
@@ -410,7 +466,7 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     // ── Commands ──────────────────────────────────────────────────────────────
     this.addCommand({
       id: 'ObsidianApiSync-pull-all',
-      name: 'Pull all files from server',
+      name: 'Force pull all files from server (overwrites local)',
       callback: () => this.pullAllFiles(),
     });
 
@@ -663,6 +719,34 @@ export default class ObsidianApiSyncPlugin extends Plugin {
 
   connectWs(): void {
     this.wsClient.connect(this.settings.serverUrl, this.settings.apiToken);
+  }
+
+  /**
+   * Smart sync: send the server a manifest of all local files with their mtimes.
+   * The server classifies each as pull/push/conflict/ok and responds via
+   * SMART_SYNC_RESPONSE, which is handled by wsClient.onSmartSyncResponse.
+   *
+   * This replaces the old blind pullAllFiles() on every connect.
+   */
+  async smartSync(): Promise<void> {
+    if (!this.settings.serverUrl || !this.settings.apiToken) return;
+    if (this.wsClient.getState() !== WsState.CONNECTED) return;
+
+    ToastManager.showInfo('Syncing...', 500);
+
+    try {
+      const localFiles = this.app.vault.getFiles().filter(f => this.shouldSyncPath(f.path, false));
+      const fileList = localFiles.map(f => ({
+        path: f.path,
+        client_mtime_ms: f.stat.mtime,
+        hash: this.wsClient.getKnownHash(f.path) || '',
+      }));
+
+      this.wsClient.sendSmartSyncRequest(fileList);
+      // Response handled asynchronously by wsClient.onSmartSyncResponse
+    } catch (err) {
+      this.showError('ERR-SMART-SYNC-01', err);
+    }
   }
 
   async pullAllFiles(): Promise<void> {

@@ -13,6 +13,7 @@ is returned once at creation and never stored.
 import hashlib
 import logging
 import secrets
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,13 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE TABLE IF NOT EXISTS server_config (
     key       TEXT PRIMARY KEY,
     value     TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS file_ledger (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    path            TEXT NOT NULL UNIQUE,
+    server_mtime_ms INTEGER NOT NULL,
+    synced_at_ms    INTEGER NOT NULL
 );
 """
 
@@ -258,3 +266,50 @@ async def get_audit_log(limit: int = 50) -> list[dict[str, Any]]:
         ) as cursor:
             rows = await cursor.fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+# -- File Ledger --------------------------------------------------------------
+
+async def upsert_ledger(path: str, server_mtime_ms: int) -> None:
+    """
+    Record that `path` is now confirmed in-sync at the given server mtime.
+
+    Called after every successful write (WS or REST) so we have a stable
+    baseline to compare future client/server timestamps against.
+    """
+    synced_at_ms = int(time.time() * 1000)
+    async with _connect() as db:
+        await db.execute(
+            """
+            INSERT INTO file_ledger (path, server_mtime_ms, synced_at_ms)
+            VALUES (?, ?, ?)
+            ON CONFLICT(path) DO UPDATE SET
+                server_mtime_ms = excluded.server_mtime_ms,
+                synced_at_ms    = excluded.synced_at_ms
+            """,
+            (path, server_mtime_ms, synced_at_ms),
+        )
+        await db.commit()
+
+
+async def get_ledger(path: str) -> dict[str, Any] | None:
+    """Return the ledger row for a single file, or None if never synced."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT path, server_mtime_ms, synced_at_ms FROM file_ledger WHERE path = ?",
+            (path,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return _row_to_dict(row) if row else None
+
+
+async def get_all_ledger() -> dict[str, dict[str, Any]]:
+    """Return the entire ledger as {path: {server_mtime_ms, synced_at_ms}}."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT path, server_mtime_ms, synced_at_ms FROM file_ledger"
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return {r["path"]: _row_to_dict(r) for r in [dict(row) for row in rows]}

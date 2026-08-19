@@ -36,7 +36,36 @@ export interface FolderCreatePayload {
   path: string;
 }
 
-export type OutboundPayload = FileModifyPayload | FileDeletePayload | FileRenamePayload | FolderCreatePayload;
+// ─── Smart Sync Payloads ─────────────────────────────────────────────────────
+
+/** Sent by client on connect to let the server classify each file. */
+export interface SmartSyncRequestPayload {
+  type: 'SMART_SYNC_REQUEST';
+  files: Array<{ path: string; client_mtime_ms: number; hash: string }>;
+}
+
+/** Client requests a single file's content be sent back over WS. */
+export interface FilePullRequestPayload {
+  type: 'FILE_PULL_REQUEST';
+  path: string;
+}
+
+/** Server response classifying every file into pull / push / conflicts / ok. */
+export interface SmartSyncResponsePayload {
+  type: 'SMART_SYNC_RESPONSE';
+  pull: string[];
+  push: string[];
+  conflicts: Array<{ path: string; server_mtime_ms: number }>;
+  ok: string[];
+}
+
+export type OutboundPayload =
+  | FileModifyPayload
+  | FileDeletePayload
+  | FileRenamePayload
+  | FolderCreatePayload
+  | SmartSyncRequestPayload
+  | FilePullRequestPayload;
 
 // ─── Server to Client ───────────────────────────────────────────────────────
 
@@ -128,6 +157,7 @@ export type InboundPayload =
   | FileRenamedPayload
   | FolderCreatedPayload
   | VaultRestoredPayload
+  | SmartSyncResponsePayload
   | { type: 'PING'; ts: string }
   | { type: 'ERROR'; code: string; message: string }
   | { type: 'CONNECTED'; client_id: string }
