@@ -13,3 +13,7 @@
 ## 2024-11-20 - Explicit Labeling vs ARIA Labels and sr-only classes
 **Learning:** Form inputs and checkboxes often have either a `placeholder` or an explicit `<label for="...">`, but for full accessibility compliance (especially in dynamic/styled forms), explicitly pairing `aria-label` along with visually hidden `sr-only` labels (if no visual label exists) is required. This ensures proper interaction for all screen reader variants.
 **Action:** When updating form inputs or rendering dynamic checkboxes (e.g., Markdown task lists), always ensure they have an explicit `aria-label` AND a paired `<label for="...">` tag (using `.sr-only` if it must be visually hidden).
+
+## 2026-08-19 - Redundant aria-label Accessibility Anti-pattern
+**Learning:** Adding an `aria-label` to an input element that already has an explicitly paired visible or visually hidden `<label for="...">` element is a redundant anti-pattern. This can cause screen readers to announce fields twice, degrading the user experience.
+**Action:** Do NOT add `aria-label` to inputs that already have an explicitly paired `<label for="...">` element.
