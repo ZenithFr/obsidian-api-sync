@@ -389,9 +389,10 @@
         <div class="flex-1 w-full space-y-1.5">
           <label for="vault-path-input" class="block text-xs font-medium text-muted">Update Path</label>
           <input id="vault-path-input" type="text" placeholder="/absolute/path/to/vault"
-                 class="input w-full font-mono text-xs" />
+                 class="input w-full font-mono text-xs"
+                 oninput="const btn = document.getElementById('save-vault-btn'); if(this.value.trim()){btn.disabled=false; btn.removeAttribute('title');}else{btn.disabled=true; btn.setAttribute('title', 'Path must be changed before saving');}" />
         </div>
-        <button onclick="updateVaultPath()" class="btn-secondary sm:w-auto w-full btn-shimmer">
+        <button id="save-vault-btn" onclick="updateVaultPath()" class="btn-secondary sm:w-auto w-full btn-shimmer disabled:opacity-50 disabled:cursor-not-allowed" disabled title="Path must be changed before saving">
           Save Changes
         </button>
       </div>
@@ -534,7 +535,7 @@
                       placeholder="Select or paste a token to generate..."></textarea>
           </div>
 
-          <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary btn-shimmer w-full">
+          <button onclick="copyConnectConfig()" id="copy-config-btn" class="btn-primary btn-shimmer w-full disabled:opacity-50 disabled:cursor-not-allowed" disabled title="Select or paste a token to copy">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
             <span id="copy-config-label">Copy Payload</span>
           </button>
@@ -767,8 +768,13 @@ function switchTab(name) {
 
 async function updateVaultPath() {
   const input = document.getElementById('vault-path-input');
+  const btn = document.getElementById('save-vault-btn');
   const path = input.value.trim();
-  if (!path) { showToast('Please enter a directory path.', 'error'); return; }
+  if (!path) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
   try {
     const res = await fetch('/dashboard/vault-path', {
       method: 'POST',
@@ -779,8 +785,14 @@ async function updateVaultPath() {
     if (!res.ok) throw new Error(data.detail || 'Failed to update path');
     document.getElementById('current-vault-path').textContent = data.vault_path;
     input.value = '';
+    btn.setAttribute('title', 'Path must be changed before saving');
     showToast('Vault directory path updated successfully.');
-  } catch (err) { showToast(err.message, 'error'); }
+  } catch (err) {
+    btn.disabled = false;
+    showToast(err.message, 'error');
+  } finally {
+    btn.textContent = 'Save Changes';
+  }
 }
 
 async function loadVaultStats() {
@@ -920,15 +932,29 @@ function updateConnectConfig() {
   const sel = document.getElementById('connect-token-select');
   const man = document.getElementById('connect-token-manual');
   const out = document.getElementById('connect-config-output');
+  const btn = document.getElementById('copy-config-btn');
   const token = sel.value || man.value.trim();
-  if (!token) { out.value = ''; return; }
+  if (!token) {
+    out.value = '';
+    btn.disabled = true;
+    btn.setAttribute('title', 'Select or paste a token to copy');
+    return;
+  }
   const config = { server: window.location.origin, token };
-  try { out.value = btoa(unescape(encodeURIComponent(JSON.stringify(config)))); } catch(e) { out.value = 'Invalid characters in token'; }
+  try {
+    out.value = btoa(unescape(encodeURIComponent(JSON.stringify(config))));
+    btn.disabled = false;
+    btn.removeAttribute('title');
+  } catch(e) {
+    out.value = 'Invalid characters in token';
+    btn.disabled = true;
+    btn.setAttribute('title', 'Invalid characters in token');
+  }
 }
 
 function copyConnectConfig() {
   const out = document.getElementById('connect-config-output');
-  if (!out.value) { showToast('Generate a payload first by selecting a token.', 'error'); return; }
+  if (!out.value) return;
   navigator.clipboard.writeText(out.value).then(() => {
     const label = document.getElementById('copy-config-label');
     label.textContent = '✓ Copied!';
