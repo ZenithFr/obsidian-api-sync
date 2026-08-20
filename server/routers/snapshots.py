@@ -107,8 +107,21 @@ async def create_snapshot(token_data: dict = Depends(get_current_token)) -> JSON
 async def restore_snapshot(snapshot_id: str, token_data: dict = Depends(get_current_token)) -> JSONResponse:
     vault_path = Path(await get_vault_path())
     snapshots_dir = _get_snapshots_dir(vault_path)
+
+    # Path traversal protection: snapshot_id should only be a filename
+    if "/" in snapshot_id or "\\" in snapshot_id or snapshot_id == ".." or snapshot_id == ".":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid snapshot ID")
+
     snap_path = snapshots_dir / snapshot_id
     
+    # Extra validation to ensure the path doesn't escape snapshots_dir
+    resolved_snap = snap_path.resolve()
+    resolved_dir = snapshots_dir.resolve()
+    try:
+        resolved_snap.relative_to(resolved_dir)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid snapshot ID")
+
     if not snap_path.exists() or not snap_path.is_file() or not snapshot_id.endswith(".zip"):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Snapshot not found")
         
