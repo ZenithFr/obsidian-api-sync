@@ -17,3 +17,6 @@
 ## 2026-08-19 - Redundant aria-label Accessibility Anti-pattern
 **Learning:** Adding an `aria-label` to an input element that already has an explicitly paired visible or visually hidden `<label for="...">` element is a redundant anti-pattern. This can cause screen readers to announce fields twice, degrading the user experience.
 **Action:** Do NOT add `aria-label` to inputs that already have an explicitly paired `<label for="...">` element.
+## 2025-02-18 - Async Visual Feedback for Token Generation
+**Learning:** Lacking a visual loading state during an async fetch operation makes the application feel unresponsive and can lead to duplicated submissions. It's important to provide immediate visual feedback while preserving existing functionality like graceful defaults.
+**Action:** Always implement explicit loading states (spinners and text changes) on buttons triggering async calls to provide immediate visual feedback. Ensure that UI validations do not conflict with the underlying application capabilities (e.g. allowing default fallbacks).
