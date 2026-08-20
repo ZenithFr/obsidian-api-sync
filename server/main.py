@@ -396,9 +396,14 @@ async def api_vault_stats(request: Request) -> JSONResponse:
         )
 
     md_files = []
-    for file in vault_root.rglob("*.md"):
-        relative = str(file.relative_to(vault_root)).replace("\\", "/")
-        md_files.append(relative)
+    for root, dirs, files in os.walk(vault_root):
+        # Prune hidden directories (like .git, .sync_versions) to speed up traversal
+        dirs[:] = [d for d in dirs if not (d.startswith(".") and d != ".obsidian")]
+        for file in files:
+            if file.endswith(".md") and not file.startswith("."):
+                full_path = Path(root) / file
+                relative = str(full_path.relative_to(vault_root)).replace("\\", "/")
+                md_files.append(relative)
     
     md_files.sort()
 
