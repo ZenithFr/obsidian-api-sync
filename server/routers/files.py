@@ -100,16 +100,17 @@ async def list_files(
 
     md_files = []
 
-    raw_files = await asyncio.to_thread(lambda: list(vault_root.rglob("*")))
-        
-    unique_files = list({f.resolve(): f for f in raw_files if f.is_file()}.values())
+    def _get_files():
+        _filtered_files = []
+        for root, dirs, files in os.walk(vault_root):
+            # Prune hidden directories (like .git, .sync_versions) to speed up traversal
+            dirs[:] = [d for d in dirs if not (d.startswith(".") and d != ".obsidian")]
+            for file in files:
+                if not file.startswith("."):
+                    _filtered_files.append(Path(root) / file)
+        return _filtered_files
 
-    filtered_files = []
-    for file in unique_files:
-        parts = file.relative_to(vault_root).parts
-        if any(p.startswith(".") and p != ".obsidian" for p in parts):
-            continue
-        filtered_files.append(file)
+    filtered_files = await asyncio.to_thread(_get_files)
 
     if include_content:
         total_size = 0
