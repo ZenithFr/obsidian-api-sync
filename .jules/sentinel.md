@@ -1,0 +1,4 @@
+## 2024-08-20 - Path Traversal in Restore Snapshot API
+**Vulnerability:** The `restore_snapshot` API endpoint in `server/routers/snapshots.py` took a `snapshot_id` directly from the user and concatenated it with the `.sync_snapshots` directory path to form the `snap_path`. This was vulnerable to path traversal (e.g. using `snapshot_id = "../../../../tmp/malicious.zip"`) allowing attackers to read and restore arbitrary ZIP files on the filesystem.
+**Learning:** `Path / snapshot_id` does not sanitize the input path. If `snapshot_id` contains `..` or an absolute path, it can escape the intended directory.
+**Prevention:** Always validate and sanitize user input that forms a file path. Use a robust sanitization function to check that the resolved path is within the expected base directory, or strictly validate the `snapshot_id` format (e.g., matching `^[a-zA-Z0-9_-]+\.zip$`).
