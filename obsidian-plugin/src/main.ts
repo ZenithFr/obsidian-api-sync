@@ -16,6 +16,9 @@ export default class ObsidianApiSyncPlugin extends Plugin {
   private remoteChangeLocks: Map<string, number> = new Map();
   private localModificationTimes: Map<string, number> = new Map();
 
+  // ⚡ Bolt: Cache settings parsing to avoid repeated allocations in hot path
+  private cachedAllowedExtensions: { raw: string, parsed: string[] } = { raw: '', parsed: [] };
+  private cachedSelectivePaths: { raw: string, parsed: string[] } = { raw: '', parsed: [] };
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -31,8 +34,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
       const extMatch = path.match(/\.([^.]+)$/);
       if (extMatch) {
         const ext = extMatch[1].toLowerCase();
-        const allowed = this.settings.allowedExtensions.split(',').map(s => s.trim().toLowerCase());
-        if (!allowed.includes(ext)) return false;
+
+        // ⚡ Bolt: Use cached allowed extensions parsing
+        if (this.cachedAllowedExtensions.raw !== this.settings.allowedExtensions) {
+          this.cachedAllowedExtensions.raw = this.settings.allowedExtensions;
+          this.cachedAllowedExtensions.parsed = this.settings.allowedExtensions.split(',').map(s => s.trim().toLowerCase());
+        }
+
+        if (!this.cachedAllowedExtensions.parsed.includes(ext)) return false;
       } else {
         return false;
       }
@@ -41,12 +50,14 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     const mode = this.settings.syncMode;
     if (mode === 'include_all') return true;
 
-    const paths = this.settings.selectiveSyncPaths.split('\n').map(s => s.trim()).filter(s => s);
+    // ⚡ Bolt: Use cached selective paths parsing
+    if (this.cachedSelectivePaths.raw !== this.settings.selectiveSyncPaths) {
+      this.cachedSelectivePaths.raw = this.settings.selectiveSyncPaths;
+      this.cachedSelectivePaths.parsed = this.settings.selectiveSyncPaths.split('\n').map(s => s.trim()).filter(s => s).map(p => p.endsWith('/') ? p.slice(0, -1) : p);
+    }
+
     let matches = false;
-    for (let p of paths) {
-      if (p.endsWith('/')) {
-        p = p.slice(0, -1);
-      }
+    for (const p of this.cachedSelectivePaths.parsed) {
       if (path === p || path.startsWith(p + '/')) {
         matches = true;
         break;
@@ -58,13 +69,15 @@ export default class ObsidianApiSyncPlugin extends Plugin {
     return true;
   }
 
+  // ⚡ Bolt: Hoist static text extensions list to a Set for O(1) lookup
+  private static textExts = new Set(['md', 'canvas', 'txt', 'css', 'json', 'csv', 'js', 'ts']);
+
   isBinaryFile(path: string): boolean {
     const extMatch = path.match(/\.([^.]+)$/);
     if (!extMatch) return false;
     const ext = extMatch[1].toLowerCase();
     // Common text formats in Obsidian
-    const textExts = ['md', 'canvas', 'txt', 'css', 'json', 'csv', 'js', 'ts'];
-    return !textExts.includes(ext);
+    return !ObsidianApiSyncPlugin.textExts.has(ext);
   }
 
   arrayBufferToBase64(buffer: ArrayBuffer): string {

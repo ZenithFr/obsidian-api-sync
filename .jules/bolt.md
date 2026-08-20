@@ -1,0 +1,3 @@
+## 2024-08-20 - Unnecessary String Splitting in Hot Paths
+**Learning:** Found a performance bottleneck in the Obsidian plugin's `shouldSyncPath` function, which was splitting strings and filtering `this.settings.allowedExtensions` and `this.settings.selectiveSyncPaths` on every single file check (thousands of times). Also found `isBinaryFile` recreating a text extensions array on every call.
+**Action:** Next time, look for string manipulation or array allocation in functions that are called repeatedly (like loops or callbacks), and cache them either at the class level or via memoization variables.
