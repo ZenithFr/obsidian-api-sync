@@ -258,18 +258,23 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
 
                     # Server-only files → client should pull
                     try:
-                        for f in vault_root.rglob("*"):
-                            if not f.is_file():
-                                continue
-                            try:
-                                rel_parts = f.relative_to(vault_root).parts
-                            except ValueError:
-                                continue
-                            if any(pt.startswith(".") and pt not in (".obsidian",) for pt in rel_parts):
-                                continue
-                            rel = "/".join(rel_parts)
-                            if rel not in client_path_set and rel not in pull_paths:
-                                pull_paths.append(rel)
+                        # Optimization: Use os.walk with directory pruning instead of Path.rglob("*")
+                        # This avoids traversing hidden directories (like .git or .sync_versions) entirely
+                        # drastically reducing I/O and I/O time.
+                        for root, dirs, files in os.walk(vault_root):
+                            # Prune hidden directories in-place (except .obsidian)
+                            dirs[:] = [d for d in dirs if not (d.startswith(".") and d != ".obsidian")]
+                            for file_name in files:
+                                if file_name.startswith(".") and file_name != ".obsidian":
+                                    continue
+                                f = Path(root) / file_name
+                                try:
+                                    rel_parts = f.relative_to(vault_root).parts
+                                except ValueError:
+                                    continue
+                                rel = "/".join(rel_parts)
+                                if rel not in client_path_set and rel not in pull_paths:
+                                    pull_paths.append(rel)
                     except Exception as scan_err:
                         logger.warning("Smart sync vault scan failed: %s", scan_err)
 
