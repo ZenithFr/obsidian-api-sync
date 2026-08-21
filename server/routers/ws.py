@@ -258,18 +258,21 @@ async def websocket_sync(websocket: WebSocket, token: str = "") -> None:
 
                     # Server-only files → client should pull
                     try:
-                        for f in vault_root.rglob("*"):
-                            if not f.is_file():
-                                continue
-                            try:
-                                rel_parts = f.relative_to(vault_root).parts
-                            except ValueError:
-                                continue
-                            if any(pt.startswith(".") and pt not in (".obsidian",) for pt in rel_parts):
-                                continue
-                            rel = "/".join(rel_parts)
-                            if rel not in client_path_set and rel not in pull_paths:
-                                pull_paths.append(rel)
+                        # ⚡ Bolt: Using os.walk with directory pruning instead of rglob
+                        # to significantly improve traversal speed by skipping hidden directories.
+                        for root, dirs, filenames in os.walk(vault_root):
+                            dirs[:] = [d for d in dirs if not d.startswith(".") or d == ".obsidian"]
+                            root_path = Path(root)
+                            for file in filenames:
+                                if file.startswith(".") and file not in (".obsidian",):
+                                    continue
+                                f = root_path / file
+                                try:
+                                    rel = "/".join(f.relative_to(vault_root).parts)
+                                    if rel not in client_path_set and rel not in pull_paths:
+                                        pull_paths.append(rel)
+                                except ValueError:
+                                    continue
                     except Exception as scan_err:
                         logger.warning("Smart sync vault scan failed: %s", scan_err)
 
