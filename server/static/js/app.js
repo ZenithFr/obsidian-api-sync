@@ -696,6 +696,17 @@ async function saveCurrentFile() {
   }
 
   setSaveStatus('Saving…');
+
+  const btnSave = document.getElementById('btn-save');
+  if (btnSave) {
+    // Cache the original HTML in a data attribute to avoid sticking on "Saving..." if called rapidly multiple times
+    if (!btnSave.hasAttribute('data-original-html')) {
+        btnSave.setAttribute('data-original-html', btnSave.innerHTML);
+    }
+    btnSave.disabled = true;
+    btnSave.innerHTML = `<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Saving…`;
+  }
+
   try {
     const headers = { 'Content-Type': 'text/plain', 'X-CSRF-Token': CSRF_TOKEN };
     if (activeToken) headers['Authorization'] = `Bearer ${activeToken}`;
@@ -714,6 +725,11 @@ async function saveCurrentFile() {
   } catch (err) {
     setSaveStatus('Save failed');
     showToast(`Save failed: ${err.message}`, 'error');
+  } finally {
+    if (btnSave) {
+      btnSave.disabled = false;
+      btnSave.innerHTML = btnSave.getAttribute('data-original-html') || '';
+    }
   }
 }
 
