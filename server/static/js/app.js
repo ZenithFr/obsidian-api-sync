@@ -237,7 +237,7 @@ function parseTaskCheckboxes(html) {
     if (state === '?') cls = 'class="task-question" ';
     if (state === '!') cls = 'class="task-important" ';
 
-    return `<li><input type="checkbox" id="${id}" ${checked}${cls}disabled aria-label="Task checkbox"><label for="${id}" class="sr-only">Task</label> `;
+    return `<li><input type="checkbox" id="${id}" ${checked}${cls}disabled><label for="${id}" class="sr-only">Task</label> `;
   });
 }
 

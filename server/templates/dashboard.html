@@ -912,15 +912,26 @@ async function generateToken() {
   }
 }
 
-async function revokeToken(id) {
+async function revokeToken(id, btn) {
   if (!confirm(`Are you sure you want to revoke Token #${id}? Any clients using it will instantly lose access.`)) return;
+
+  if (!btn.dataset.originalHtml) {
+    btn.dataset.originalHtml = btn.innerHTML;
+  }
+  btn.disabled = true;
+  btn.innerHTML = 'Revoking...';
+
   try {
     const res = await fetch(`/dashboard/tokens/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to revoke token');
     document.querySelector(`tr[data-token-id="${id}"]`)?.remove();
     showToast('Token revoked successfully.');
     await loadTokens();
-  } catch (err) { showToast(err.message, 'error'); }
+  } catch (err) {
+    showToast(err.message, 'error');
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.originalHtml;
+  }
 }
 
 function copyNewToken() {
