@@ -772,8 +772,9 @@ async function updateVaultPath() {
   const path = input.value.trim();
   if (!path) return;
 
+  if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.textContent = 'Saving...';
+  btn.innerHTML = `<svg class="w-4 h-4 animate-spin inline-block mr-1.5 align-text-bottom" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><span class="btn-text">Saving...</span>`;
 
   try {
     const res = await fetch('/dashboard/vault-path', {
@@ -791,7 +792,7 @@ async function updateVaultPath() {
     btn.disabled = false;
     showToast(err.message, 'error');
   } finally {
-    btn.textContent = 'Save Changes';
+    btn.innerHTML = btn.dataset.originalHtml;
   }
 }
 
@@ -886,7 +887,7 @@ async function generateToken() {
   const btn = document.getElementById('generate-token-btn');
   const label = (input.value || 'default').trim();
 
-  const originalContent = btn.innerHTML;
+  if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><span class="btn-text">Generating...</span>`;
 
@@ -907,7 +908,7 @@ async function generateToken() {
     showToast(err.message, 'error');
   } finally {
     btn.disabled = false;
-    btn.innerHTML = originalContent;
+    btn.innerHTML = btn.dataset.originalHtml;
   }
 }
 
