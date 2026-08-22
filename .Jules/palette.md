@@ -20,3 +20,7 @@
 ## 2025-02-18 - Async Visual Feedback for Token Generation
 **Learning:** Lacking a visual loading state during an async fetch operation makes the application feel unresponsive and can lead to duplicated submissions. It's important to provide immediate visual feedback while preserving existing functionality like graceful defaults.
 **Action:** Always implement explicit loading states (spinners and text changes) on buttons triggering async calls to provide immediate visual feedback. Ensure that UI validations do not conflict with the underlying application capabilities (e.g. allowing default fallbacks).
+
+## 2025-02-18 - Caching original HTML in dataset
+**Learning:** When implementing temporary loading states on buttons via JavaScript, caching the original HTML in a local variable can cause the button to become permanently stuck in the loading state if clicked rapidly multiple times, because the subsequent click captures the "loading" HTML as the original.
+**Action:** Cache the original HTML in a dataset attribute (e.g., `data-original-html`) rather than a local variable to prevent the button from becoming permanently stuck in the loading state.
