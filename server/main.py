@@ -110,7 +110,13 @@ async def lifespan(app: FastAPI):
     vault_path = await get_vault_path()
     vault_root = Path(vault_path)  # always absolute after init_db
     vault_root.mkdir(parents=True, exist_ok=True)
-    md_count = sum(1 for _ in vault_root.rglob("*.md"))
+
+    # Count md files efficiently
+    md_count = 0
+    for root, dirs, files in os.walk(vault_root):
+        dirs[:] = [d for d in dirs if not (d.startswith(".") and d != ".obsidian")]
+        md_count += sum(1 for f in files if f.endswith(".md") and not f.startswith("."))
+
     if md_count == 0:
         logger.warning(
             "Vault contains no .md files: %s — "
